@@ -28,7 +28,12 @@ final class HealthKitService: ObservableObject {
     init() {
         workoutConfig.activityType = .running
         workoutConfig.locationType = .outdoor
-        refreshLocalAuthFlags()
+        if UserDefaults.standard.bool(forKey: "noco.health.missingEntitlement") {
+            authorizationState = .missingEntitlement
+            lastError = "HealthKit-Entitlement fehlt nach Sideload — bezahlte Developer-ID + HealthKit auf App-ID com.noco.running nötig."
+        } else {
+            refreshLocalAuthFlags()
+        }
     }
 
     private var readTypes: Set<HKObjectType> {
@@ -102,18 +107,29 @@ final class HealthKitService: ObservableObject {
             authorizationState = .connected
             isAuthorized = true
             lastError = nil
+            UserDefaults.standard.set(false, forKey: "noco.health.missingEntitlement")
             return true
         } catch {
+            let ns = error as NSError
             let message = error.localizedDescription
-            // Missing entitlement / sideload without HealthKit typically lands here with no sheet.
-            if message.localizedCaseInsensitiveContains("authorization")
-                || message.localizedCaseInsensitiveContains("entitlement")
-                || (error as NSError).domain == "com.apple.healthkit" {
-                lastError = "Health-Berechtigung fehlgeschlagen (\(message)). App neu installieren (IPA mit HealthKit-Entitlement) und unter Einstellungen → Health → Datenzugriff NOCO erlauben."
+            // Code 4 = missing entitlement in the *installed* signature / provisioning profile.
+            if ns.domain == "com.apple.healthkit", ns.code == 4 {
+                lastError = """
+                HealthKit-Entitlement fehlt nach dem Sideload.
+                Ursache: Sideloadly hat com.apple.developer.healthkit beim Signieren entfernt (typisch bei kostenloser Apple-ID).
+                Fix: Bezahltes Apple Developer Program → developer.apple.com → Identifier com.noco.running → HealthKit aktivieren → App löschen → mit derselben bezahlten ID neu sideloaden.
+                Details: docs/HEALTHKIT-SIDELOAD.md
+                """
+                authorizationState = .missingEntitlement
+                UserDefaults.standard.set(true, forKey: "noco.health.missingEntitlement")
+            } else if message.localizedCaseInsensitiveContains("entitlement") {
+                lastError = "HealthKit-Entitlement fehlt (\(message)). Bezahlte Developer-ID + HealthKit auf App-ID com.noco.running nötig."
+                authorizationState = .missingEntitlement
+                UserDefaults.standard.set(true, forKey: "noco.health.missingEntitlement")
             } else {
                 lastError = message
+                authorizationState = .failed
             }
-            authorizationState = .failed
             isAuthorized = false
             return false
         }
@@ -452,6 +468,7 @@ enum HealthAuthState: Equatable {
     case connected
     case denied
     case failed
+    case missingEntitlement
 
     var label: String {
         switch self {
@@ -461,6 +478,7 @@ enum HealthAuthState: Equatable {
         case .connected: return "Verbunden"
         case .denied: return "Eingeschränkt / prüfen"
         case .failed: return "Fehler"
+        case .missingEntitlement: return "Entitlement fehlt (Sideload)"
         }
     }
 }

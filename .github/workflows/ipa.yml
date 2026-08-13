@@ -39,9 +39,13 @@ jobs:
           APP=$(find ios/Derived -name "NOCORunning.app" -path "*iphoneos*" | head -n 1)
           ENT="ios/NOCORunning/NOCORunning.entitlements"
           echo "App: $APP"
-          # Ad-hoc sign with HealthKit entitlements so Sideloadly preserves them.
-          codesign --force --sign - --entitlements "$ENT" --timestamp=none "$APP" || true
-          codesign -d --entitlements :- "$APP" || true
+          cp "$ENT" "$APP/archived-expanded-entitlements.xcent"
+          cp "$ENT" "$APP/NOCORunning.entitlements"
+          # Ad-hoc sign WITH HealthKit — Sideloadly reads this before re-signing.
+          codesign --force --deep --sign - --entitlements "$ENT" --timestamp=none "$APP"
+          codesign -d --entitlements :- "$APP" > /tmp/ents.xml
+          cat /tmp/ents.xml
+          grep -q "com.apple.developer.healthkit" /tmp/ents.xml
           /usr/libexec/PlistBuddy -c 'Print :NSHealthShareUsageDescription' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :NSHealthUpdateUsageDescription' "$APP/Info.plist"
 
@@ -56,17 +60,21 @@ jobs:
           fi
           echo "Packaging $APP"
           rm -rf Payload
-          mkdir -p Payload
+          mkdir -p Payload output
           cp -R "$APP" Payload/NOCORunning.app
-          mkdir -p output
           rm -f output/NOCORunning.ipa
           zip -r output/NOCORunning.ipa Payload
-          ls -lh output/NOCORunning.ipa
+          cp ios/NOCORunning/SideloadlyHealthKit.entitlements output/SideloadlyHealthKit.entitlements
+          cp docs/HEALTHKIT-SIDELOAD.md output/HEALTHKIT-SIDELOAD.md
+          ls -lh output/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: NOCORunning-ipa
-          path: output/NOCORunning.ipa
+          path: |
+            output/NOCORunning.ipa
+            output/SideloadlyHealthKit.entitlements
+            output/HEALTHKIT-SIDELOAD.md
           if-no-files-found: error
           retention-days: 14

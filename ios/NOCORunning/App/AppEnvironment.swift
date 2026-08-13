@@ -40,8 +40,14 @@ final class AppEnvironment: ObservableObject {
         Task {
             // Health sheet needs an active UI scene — brief delay after first frame.
             try? await Task.sleep(nanoseconds: 600_000_000)
-            _ = await health.requestAccess()
-            _ = await healthSync.sync(using: health, context: context)
+            // Skip auto-prompt if a previous install already proved the entitlement is missing
+            // (Sideloadly free ID) — user must fix signing first.
+            if health.authorizationState != .missingEntitlement {
+                _ = await health.requestAccess()
+            }
+            if health.authorizationState != .missingEntitlement {
+                _ = await healthSync.sync(using: health, context: context)
+            }
             await ai.testConnection()
             await coachSync.syncAll(ai: ai, context: context)
             let profile = currentProfile(context: context)

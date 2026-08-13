@@ -1,0 +1,133 @@
+name: Build IPA (signed)
+
+# Produces a HealthKit-capable IPA when Apple signing secrets are present.
+# Required secrets: BUILD_CERTIFICATE_BASE64, P12_PASSWORD,
+# BUILD_PROVISION_PROFILE_BASE64, KEYCHAIN_PASSWORD
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ipa-signed.yml"
+
+jobs:
+  signed-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        env:
+          CERT: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          PROFILE: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$CERT" ] || [ -z "$PROFILE" ] || [ -z "$P12_PASSWORD" ] || [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "::notice::Signing secrets missing — skipping signed IPA. Use Sideloadly with a paid Apple ID + HealthKit on App ID com.noco.running (see docs/HEALTHKIT-SIDELOAD.md)."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          else
+            echo "SKIP=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Select Xcode
+        if: env.SKIP == '0'
+        run: |
+          xcodebuild -version
+          sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install certificate and profile
+        if: env.SKIP == '0'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          PROFILE_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+          security cms -D -i "$PROFILE_PATH" | grep -A2 healthkit || {
+            echo "::error::Provisioning profile does not contain HealthKit. Enable HealthKit on App ID com.noco.running and regenerate the profile."
+            exit 1
+          }
+
+          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract Entitlements.application-identifier raw -o - - | cut -d. -f1)
+          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          SIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(iPhone Distribution[^"]*\)".*/\1/p' | head -1)
+          if [ -z "$SIGN_IDENTITY" ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Apple Distribution[^"]*\)".*/\1/p' | head -1)
+          fi
+          if [ -z "$SIGN_IDENTITY" ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(iPhone Developer[^"]*\)".*/\1/p' | head -1)
+          fi
+          if [ -z "$SIGN_IDENTITY" ]; then
+            SIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p' | head -1)
+          fi
+          echo "SIGN_IDENTITY=$SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "Using identity: $SIGN_IDENTITY team: $TEAM_ID"
+
+      - name: Build signed app
+        if: env.SKIP == '0'
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project NOCORunning.xcodeproj \
+            -scheme NOCORunning \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath Derived \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            CODE_SIGN_ENTITLEMENTS=NOCORunning/NOCORunning.entitlements \
+            build
+
+      - name: Verify HealthKit entitlement
+        if: env.SKIP == '0'
+        run: |
+          set -euo pipefail
+          APP=$(find ios/Derived -name "NOCORunning.app" -path "*iphoneos*" | head -n 1)
+          codesign -d --entitlements :- "$APP" | tee /tmp/ents.xml
+          grep -q "com.apple.developer.healthkit" /tmp/ents.xml
+
+      - name: Package IPA
+        if: env.SKIP == '0'
+        run: |
+          set -euo pipefail
+          APP=$(find ios/Derived -name "NOCORunning.app" -path "*iphoneos*" | head -n 1)
+          rm -rf Payload
+          mkdir -p Payload output
+          cp -R "$APP" Payload/NOCORunning.app
+          zip -r output/NOCORunning-signed.ipa Payload
+          ls -lh output/NOCORunning-signed.ipa
+
+      - name: Upload signed IPA
+        if: env.SKIP == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOCORunning-ipa-signed
+          path: output/NOCORunning-signed.ipa
+          if-no-files-found: error
+          retention-days: 14

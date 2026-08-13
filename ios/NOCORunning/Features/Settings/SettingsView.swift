@@ -126,12 +126,15 @@ struct HealthSettingsView: View {
                 .disabled(env.healthSync.isSyncing || busy)
             }
             Section("Tipp") {
-                Text("Erscheint kein Health-Dialog: App einmal löschen, neue IPA installieren, dann hier „Zugriff anfordern“ tippen. Danach in der Health-App unter Teilen → Apps → NOCO RUNNING alle Lauf-/Puls-Kategorien einschalten.")
+                Text("Erscheint „Missing healthkit entitlement“: Die IPA hat HealthKit, aber Sideloadly hat es beim Signieren entfernt.")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
-                Text("Wichtig für Sideloadly: HealthKit braucht eine Apple-Developer-ID mit Health-Capability (kostenpflichtiges Programm). Eine reine Free-Apple-ID streicht Health oft beim Signieren — dann kommt nie ein Dialog.")
+                Text("1) Bezahltes Apple Developer Program\n2) developer.apple.com → Identifiers → com.noco.running → HealthKit an\n3) Alte App löschen\n4) Sideloadly mit derselben bezahlten Apple-ID (Bundle-ID nicht ändern)\n5) Hier erneut „Zugriff anfordern“")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
+                Text("Kostenlose Apple-IDs können HealthKit technisch nicht freischalten — das blockiert Apple, nicht NOCO.")
+                    .font(.footnote)
+                    .foregroundStyle(NocoTheme.coral)
             }
         }
         .scrollContentBackground(.hidden)

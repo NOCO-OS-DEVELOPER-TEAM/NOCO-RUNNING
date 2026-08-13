@@ -152,7 +152,7 @@ final class AIClient: ObservableObject {
     }
 
     private func post<T: Decodable, B: Encodable>(_ path: String, body: B) async -> T? {
-        guard reachability != .unreachable || lastCheckedAt == nil else {
+        if reachability == .unreachable, lastCheckedAt != nil {
             await testConnection()
             if reachability == .unreachable { return nil }
         }

@@ -1,0 +1,43 @@
+---
+description: NOCO RUNNING architecture, priorities, and implementation rules
+alwaysApply: true
+---
+
+# NOCO RUNNING
+
+Native iOS running app (SwiftUI) plus a local Windows KI API. Identity: premium, calm, liquid-glass — not a generic fitness clone.
+
+## Priorities (never invert)
+
+1. Stability
+2. Run tracking reliability
+3. Apple integration
+4. Performance / battery
+5. Design
+6. KI
+7. Animations
+
+Tracking must work with no network, no PC, no HealthKit, and no KI. KI must never block GPS, persistence, or the live run UI.
+
+## Architecture
+
+- `ios/NOCORunning` — app UI and SwiftData
+- `ios/NOCORunningShared` — tracking math, DTOs, formatters (app + Live Activity)
+- `ios/NOCORunningLiveActivity` — Live Activity / Dynamic Island
+- `server/` — local FastAPI coach on the Windows PC
+- Persist runs locally first; queue KI analysis for later
+
+## Implementation rules
+
+- Prefer SwiftUI + SwiftData + MapKit + HealthKit + ActivityKit
+- Smooth GPS; cap impossible speeds; show 0 when stationary
+- Throttle live UI (~1 Hz metrics, modest map cadence); flush track points in batches
+- No animation on the hot GPS path; haptics only for meaningful events
+- Metric units by default; honor the user's unit setting
+- Never invent run stats for the coach — only stored data
+- Never commit secrets, `.env`, certificates, or API keys
+- Do not push untested or non-compiling changes
+
+## Windows limitation
+
+This workspace is Windows. Swift cannot be compiled here. After iOS changes, keep the Xcode project coherent (`PBXFileSystemSynchronizedRootGroup` folders). IPA production needs a Mac or GitHub Actions with signing assets.

@@ -1,0 +1,61 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserdata
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Secrets
+.env
+.env.local
+*.pem
+*.p12
+*.mobileprovision
+AuthKey_*.p8
+Secrets.local.swift
+server/secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Output artifacts (keep folder)
+output/*.ipa
+output/*.xcarchive
+output/*.zip
+output/*.app
+!output/.gitkeep
+
+# Cursor
+.cursor/debug.log
+
+# IDE
+.idea/
+*.swp

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>NOCO RUNNING</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>NOCO RUNNING nutzt deinen Standort, um Distanz, Pace und die Laufstrecke auf der Karte zu erfassen.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Damit der Lauf weiter aufgezeichnet wird, wenn du das Display sperrst oder zu einer anderen App wechselst.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>NOCO RUNNING liest optionale Health-Daten wie Puls, Schritte, Gewicht und frühere Läufe.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Abgeschlossene Läufe können optional in Apple Health gespeichert werden.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Bewegungsdaten helfen, Schritte und Aktivität während eines Laufs einzuordnen.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Während des Laufs kannst du die aktuelle Wiedergabe steuern.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>NOCO RUNNING spricht deinen eigenen KI-Server im lokalen Netz an. Ohne Verbindung läuft das Tracking trotzdem.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+</dict>
+</plist>

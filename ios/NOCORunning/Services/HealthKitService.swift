@@ -171,6 +171,19 @@ final class HealthKitService: ObservableObject {
         }
     }
 
+    private func sumToday(_ id: HKQuantityTypeIdentifier) async -> Double? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: id) else { return nil }
+        let start = Calendar.current.startOfDay(for: .now)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: .now)
+        let unit: HKUnit = id == .distanceWalkingRunning ? .meter() : .count()
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+                continuation.resume(returning: stats?.sumQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(query)
+        }
+    }
+
     private func fetchRunningWorkouts(limit: Int) async -> [HKWorkout] {
         await withCheckedContinuation { continuation in
             let predicate = HKQuery.predicateForWorkouts(with: .running)

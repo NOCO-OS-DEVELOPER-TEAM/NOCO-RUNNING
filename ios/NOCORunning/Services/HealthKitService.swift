@@ -387,8 +387,12 @@ final class HealthKitService: ObservableObject {
 
     private func averageHeartRate(for workout: HKWorkout) async -> Double? {
         let unit = HKUnit.count().unitDivided(by: .minute())
-        if let meta = workout.metadata?[HKMetadataKeyAverageHeartRate] as? HKQuantity {
+        // Metadata key as string — the HKMetadataKeyAverageHeartRate symbol is not always visible to Swift.
+        if let meta = workout.metadata?["HKAverageHeartRate"] as? HKQuantity {
             return meta.doubleValue(for: unit)
+        }
+        if let number = workout.metadata?["HKAverageHeartRate"] as? NSNumber {
+            return number.doubleValue
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
         let predicate = HKQuery.predicateForSamples(

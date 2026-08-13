@@ -32,21 +32,16 @@ struct RunPrepView: View {
                         .padding(.horizontal, 24)
                 }
 
-                Button {
+                AuroraButton(
+                    title: env.tracker.snapshot.gpsReady ? "Jetzt loslaufen" : "Trotzdem starten",
+                    systemImage: "figure.run"
+                ) {
                     env.tracker.start(routeName: selectedRoute?.name)
-                } label: {
-                    Text(env.tracker.snapshot.gpsReady ? "Jetzt loslaufen" : "Trotzdem starten")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(NocoTheme.aurora)
-                        .foregroundStyle(NocoTheme.ink)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
             }
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Lauf")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

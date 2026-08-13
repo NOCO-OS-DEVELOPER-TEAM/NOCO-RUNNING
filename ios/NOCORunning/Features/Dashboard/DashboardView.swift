@@ -23,7 +23,7 @@ struct DashboardView: View {
                 }
                 .padding(20)
             }
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("NOCO")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -44,12 +44,15 @@ struct DashboardView: View {
     }
 
     private var hero: some View {
-        GlassSurface(cornerRadius: 32) {
+        GlassSurface(cornerRadius: 32, bloom: true) {
             VStack(alignment: .leading, spacing: 18) {
-                Text(heroTitle)
-                    .font(NocoTheme.captionFont)
-                    .tracking(1.2)
-                    .foregroundStyle(NocoTheme.mist)
+                HStack(spacing: 8) {
+                    IntelligenceSparkle()
+                    Text(heroTitle)
+                        .font(NocoTheme.captionFont)
+                        .tracking(1.2)
+                        .foregroundStyle(NocoTheme.mist)
+                }
                 HStack(alignment: .bottom, spacing: 20) {
                     MetricStack(
                         label: units.distanceLabel,
@@ -65,30 +68,29 @@ struct DashboardView: View {
                 }
             }
         }
-        .rainbowGlow(radius: 16, opacity: 0.35)
+        .rainbowGlow(radius: 18, opacity: 0.5)
     }
 
     private var startButton: some View {
-        Button {
+        AuroraButton(title: "Lauf starten", systemImage: "figure.run") {
             Haptics.medium()
             onStart()
-        } label: {
-            HStack {
-                Image(systemName: "figure.run")
-                Text("Lauf starten")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(NocoTheme.aurora)
-            .foregroundStyle(NocoTheme.ink)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder
     private var dynamicCards: some View {
+        if env.healthSync.lastImportedCount > 0 {
+            GlassSurface {
+                HStack {
+                    Image(systemName: "applewatch")
+                        .foregroundStyle(NocoTheme.aqua)
+                    Text(env.healthSync.statusText)
+                        .font(.subheadline)
+                    Spacer()
+                }
+            }
+        }
         if let last = completed.first {
             lastRunCard(last)
         }
@@ -118,7 +120,7 @@ struct DashboardView: View {
     private func lastRunCard(_ run: Run) -> some View {
         GlassSurface {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Letzter Lauf · \(RunFormatters.relativeDate(run.startedAt))")
+                Text("Letzter Lauf · \(RunFormatters.relativeDate(run.startedAt)) · \(run.source.title)")
                     .font(NocoTheme.captionFont)
                     .foregroundStyle(NocoTheme.mist)
                 HStack {

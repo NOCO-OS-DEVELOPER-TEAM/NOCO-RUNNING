@@ -9,7 +9,7 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Damit der Lauf weiter aufgezeichnet wird, wenn du das Display sperrst oder zu einer anderen App wechselst.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>NOCO RUNNING liest optionale Health-Daten wie Puls, Schritte, Gewicht und frühere Läufe.</string>
+	<string>NOCO RUNNING liest optionale Health-Daten wie Puls, Schritte, Gewicht, Trainings und Apple-Watch-Läufe inklusive Strecke.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Abgeschlossene Läufe können optional in Apple Health gespeichert werden.</string>
 	<key>NSMotionUsageDescription</key>

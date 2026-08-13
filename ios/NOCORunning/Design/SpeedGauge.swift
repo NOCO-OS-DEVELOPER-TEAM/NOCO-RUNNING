@@ -13,6 +13,16 @@ struct SpeedGauge: View {
             Circle()
                 .stroke(Color.white.opacity(0.08), lineWidth: 10)
             Circle()
+                .stroke(
+                    AngularGradient(
+                        colors: [NocoTheme.aqua.opacity(0.35), NocoTheme.violet.opacity(0.25), NocoTheme.coral.opacity(0.3), NocoTheme.aqua.opacity(0.35)],
+                        center: .center
+                    ),
+                    lineWidth: 14
+                )
+                .blur(radius: 6)
+                .rainbowGlow(radius: 10, opacity: 0.35)
+            Circle()
                 .trim(from: 0.12, to: 0.12 + 0.76 * progress)
                 .stroke(
                     AngularGradient(

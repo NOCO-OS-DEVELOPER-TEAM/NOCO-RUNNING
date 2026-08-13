@@ -3,33 +3,40 @@ import SwiftUI
 struct GlassSurface<Content: View>: View {
     var cornerRadius: CGFloat = 24
     var intensity: Double = 1
+    var bloom: Bool = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content()
             .padding(16)
-            .background { glass }
+            .background { liquid.clipShape(shape) }
             .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.38 * intensity),
-                                Color.white.opacity(0.06 * intensity),
-                                NocoTheme.aqua.opacity(0.18 * intensity)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                RainbowBloom(
+                    lineWidth: bloom ? 1.6 : 1.15,
+                    cornerRadius: cornerRadius,
+                    spinning: bloom
+                )
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(0.35), radius: 18, y: 10)
+            .overlay(alignment: .top) {
+                shape
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.22 * intensity), .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
+                    )
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: Color.black.opacity(0.38), radius: bloom ? 22 : 16, y: 10)
+            .shadow(color: NocoTheme.violet.opacity(bloom ? 0.18 : 0.08), radius: bloom ? 18 : 8, y: 6)
+            .rainbowGlow(radius: bloom ? 20 : 10, opacity: bloom ? 0.55 : 0.22)
     }
 
     @ViewBuilder
-    private var glass: some View {
+    private var liquid: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         fallbackGlass(shape)
     }
@@ -37,17 +44,20 @@ struct GlassSurface<Content: View>: View {
     private func fallbackGlass(_ shape: RoundedRectangle) -> some View {
         shape
             .fill(.ultraThinMaterial)
-            .overlay(shape.fill(Color.white.opacity(0.06 * intensity)))
-            .overlay(alignment: .top) {
-                shape
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.18 * intensity), .clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
+            .overlay(shape.fill(Color.white.opacity(0.07 * intensity)))
+            .overlay {
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            NocoTheme.aqua.opacity(0.08 * intensity),
+                            NocoTheme.violet.opacity(0.07 * intensity),
+                            Color.white.opacity(0.02)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
-                    .blendMode(.plusLighter)
+                )
+                .blendMode(.plusLighter)
             }
     }
 }
@@ -58,14 +68,46 @@ struct RainbowGlow: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .shadow(color: NocoTheme.aqua.opacity(opacity * 0.45), radius: radius, y: 0)
-            .shadow(color: NocoTheme.violet.opacity(opacity * 0.28), radius: radius + 6, y: 4)
-            .shadow(color: NocoTheme.coral.opacity(opacity * 0.18), radius: radius + 10, y: 8)
+            .shadow(color: NocoTheme.aqua.opacity(opacity * 0.5), radius: radius, y: 0)
+            .shadow(color: NocoTheme.violet.opacity(opacity * 0.32), radius: radius + 7, y: 4)
+            .shadow(color: NocoTheme.coral.opacity(opacity * 0.22), radius: radius + 12, y: 8)
     }
 }
 
 extension View {
     func rainbowGlow(radius: CGFloat = 18, opacity: Double = 0.55) -> some View {
         modifier(RainbowGlow(radius: radius, opacity: opacity))
+    }
+}
+
+struct AuroraButton: View {
+    var title: String
+    var systemImage: String? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(title)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .foregroundStyle(NocoTheme.ink)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(NocoTheme.aurora)
+            }
+            .overlay {
+                RainbowBloom(lineWidth: 1.4, cornerRadius: 22, spinning: true)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .rainbowGlow(radius: 16, opacity: 0.7)
+            .intelligenceShimmer()
+        }
+        .buttonStyle(.plain)
     }
 }

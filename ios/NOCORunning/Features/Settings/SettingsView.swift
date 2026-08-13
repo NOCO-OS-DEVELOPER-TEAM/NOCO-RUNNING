@@ -63,24 +63,40 @@ struct SettingsView: View {
 
 struct HealthSettingsView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         List {
-            LabeledContent("HealthKit") {
-                Text(env.health.isAvailable ? (env.health.isAuthorized ? "Verbunden" : "Berechtigung nötig") : "Nicht verfügbar")
+            Section("Status") {
+                LabeledContent("HealthKit") {
+                    Text(env.health.isAvailable ? (env.health.isAuthorized ? "Verbunden" : "Berechtigung nötig") : "Nicht verfügbar")
+                }
+                if let hr = env.health.latestHeartRate {
+                    LabeledContent("Puls", value: "\(Int(hr)) bpm")
+                }
+                if let steps = env.health.latestSteps {
+                    LabeledContent("Schritte heute", value: "\(Int(steps))")
+                }
+                Button("Zugriff anfordern") {
+                    Task { await env.health.requestAccess() }
+                }
             }
-            if let hr = env.health.latestHeartRate {
-                LabeledContent("Puls", value: "\(Int(hr)) bpm")
+            Section("Apple Watch ohne iPhone") {
+                Text("Joggen nur mit der Watch geht. Starte in der Apple-Trainings-App „Laufen im Freien“. Das iPhone kann zu Hause bleiben. Sobald Watch und iPhone sich wieder sehen, liegt der Lauf in Apple Health und NOCO übernimmt Distanz, Zeit, Pace, Puls und wenn möglich die Strecke.")
+                    .font(.footnote)
+                    .foregroundStyle(NocoTheme.mist)
+                Text(env.healthSync.statusText)
+                    .font(.subheadline)
+                if let synced = env.healthSync.lastSyncAt {
+                    Text("Zuletzt geprüft: \(synced.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(NocoTheme.mist)
+                }
+                Button("Watch-Läufe jetzt übernehmen") {
+                    Task { await env.syncHealthRuns(context: modelContext) }
+                }
+                .disabled(env.healthSync.isSyncing)
             }
-            if let steps = env.health.latestSteps {
-                LabeledContent("Schritte heute", value: "\(Int(steps))")
-            }
-            Button("Zugriff anfordern") {
-                Task { await env.health.requestAccess() }
-            }
-            Text("Eine Apple Watch ist nicht nötig. Wenn eine Watch Health-Daten schreibt, fließen sie automatisch mit ein.")
-                .font(.footnote)
-                .foregroundStyle(NocoTheme.mist)
         }
         .scrollContentBackground(.hidden)
         .background(NocoTheme.ink)

@@ -6,6 +6,7 @@ import Combine
 final class AppEnvironment: ObservableObject {
     let tracker = RunTracker()
     let health = HealthKitService()
+    let healthSync = HealthRunSync()
     let music = MusicController()
     let weather = WeatherService()
     let ai = AIClient()
@@ -17,8 +18,14 @@ final class AppEnvironment: ObservableObject {
     @Published var newRecords: [PersonalRecord] = []
 
     private var analysisQueue: AnalysisQueue?
+    private var cancellables: Set<AnyCancellable> = []
 
     func bootstrap(context: ModelContext) {
+        bind(healthSync)
+        bind(health)
+        bind(tracker)
+        bind(ai)
+        bind(music)
         ensureProfile(context: context)
         let weight = currentWeight(context: context)
         tracker.configure(context: context, health: health, liveActivity: liveActivity, weightKg: weight)
@@ -26,6 +33,7 @@ final class AppEnvironment: ObservableObject {
         analysisQueue = AnalysisQueue(ai: ai)
         Task {
             await health.requestAccess()
+            _ = await healthSync.sync(using: health, context: context)
             await ai.testConnection()
             let profile = currentProfile(context: context)
             let runs = (try? context.fetch(FetchDescriptor<Run>())) ?? []
@@ -55,6 +63,17 @@ final class AppEnvironment: ObservableObject {
         return run
     }
 
+    func syncHealthRuns(context: ModelContext) async {
+        let imported = await healthSync.sync(using: health, context: context)
+        guard !imported.isEmpty else { return }
+        let weight = currentWeight(context: context)
+        let profile = currentProfile(context: context)
+        let runs = (try? context.fetch(FetchDescriptor<Run>())) ?? []
+        let goals = (try? context.fetch(FetchDescriptor<Goal>())) ?? []
+        let athlete = StatsMath.athleteContext(name: profile?.name ?? "", weightKg: weight, runs: runs, goals: goals)
+        await analysisQueue?.processPending(context: context, athlete: athlete)
+    }
+
     func currentWeight(context: ModelContext) -> Double? {
         var descriptor = FetchDescriptor<WeightEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         descriptor.fetchLimit = 1
@@ -77,5 +96,14 @@ final class AppEnvironment: ObservableObject {
             context.insert(Goal(kind: .weeklyDistance, targetValue: 20_000))
         }
         try? context.save()
+    }
+
+    private func bind<T: ObservableObject>(_ child: T) {
+        child.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 }

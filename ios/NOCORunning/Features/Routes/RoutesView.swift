@@ -65,7 +65,7 @@ struct RoutesView: View {
                 }
                 .padding(20)
             }
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Strecken")
             .task {
                 hint = await env.ai.recommendRoute(context: StatsMath.athleteContext(

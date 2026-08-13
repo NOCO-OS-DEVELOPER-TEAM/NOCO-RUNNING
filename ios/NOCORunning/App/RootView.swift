@@ -1,13 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct RootView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var summaryRun: Run?
     @State private var selectedTab: AppTab = .home
 
     var body: some View {
         ZStack {
-            NocoTheme.ink.ignoresSafeArea()
+            AmbientField(intensity: env.tracker.snapshot.phase == .running || env.tracker.snapshot.phase == .paused ? 0.35 : 1)
             switch env.tracker.snapshot.phase {
             case .preparing:
                 RunPrepView()
@@ -26,6 +29,10 @@ struct RootView: View {
             }
         }
         .tint(NocoTheme.aqua)
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, env.tracker.snapshot.phase == .idle else { return }
+            Task { await env.syncHealthRuns(context: modelContext) }
+        }
     }
 
     private var tabShell: some View {

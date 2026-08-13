@@ -45,15 +45,20 @@ Dieses Windows-Workspace kann Swift **nicht** kompilieren. Der CI-Job auf `macos
 
 In der App: **Mehr → Einstellungen → Lokale Verbindung** → IPv4 des PCs, Port `8787`.
 
-## Sideloading / IPA
+## IPA auf Windows (ohne Mac)
 
-```sh
-# nur macOS
-DEVELOPMENT_TEAM=YOUR_TEAM_ID ./scripts/build-ipa.sh
+GitHub Actions baut die IPA auf einem Mac-Runner. Danach auf dem Windows-PC:
+
+```powershell
+.\scripts\Download-IPA.ps1
 ```
 
-Auf Windows öffnet `.\scripts\Open-Output.ps1` den Ausgabeordner. Ohne Mac und Signing-Zertifikat entsteht keine sideloadbare IPA.
+Die Datei landet in `output\NOCORunning.ipa` und der Ordner öffnet sich. Sideloading z.B. mit Sideloadly (Apple-ID signiert lokal).
+
+Manuell: GitHub → Actions → **Build IPA** → neuesten grünen Lauf → Artifacts → `NOCORunning-ipa`.
+
+HealthKit und Live Activities brauchen für volle Systemintegration eine bezahlte Apple-Developer-Signierung. GPS-Tracking in NOCO läuft auch in der sideloadbaren IPA.
 
 ## Design
 
-Dunkle Fläche, Glas, Aurora aus Aqua / Violett / Koralle. Große Zahlen, wenig Chrome, Haptics nur bei Start, Pause, Ende und Rekorden.
+Liquid Glass, Rainbow Glow, Aurora-Orbs und Apple-Intelligence-Shimmer. Während eines Laufs bleiben die Animationen bewusst leichter, damit GPS nicht ruckelt.

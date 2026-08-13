@@ -48,7 +48,7 @@ struct RunSummaryView: View {
                 .padding(20)
                 .animation(NocoMotion.soft, value: revealed)
             }
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Dein Lauf")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -60,7 +60,7 @@ struct RunSummaryView: View {
     }
 
     private var hero: some View {
-        GlassSurface(cornerRadius: 32) {
+        GlassSurface(cornerRadius: 32, bloom: true) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(RunFormatters.relativeDate(run.startedAt))
                     .font(NocoTheme.captionFont)

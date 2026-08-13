@@ -12,6 +12,16 @@ enum RunSource: String, Codable {
     case tracked
     case imported
     case manual
+    case appleHealth
+
+    var title: String {
+        switch self {
+        case .tracked: return "iPhone"
+        case .imported: return "Import"
+        case .manual: return "Manuell"
+        case .appleHealth: return "Apple Watch"
+        }
+    }
 }
 
 @Model
@@ -34,6 +44,7 @@ final class Run {
     var analysisBody: String?
     var analysisPending: Bool
     var routeName: String?
+    var healthKitUUID: UUID?
 
     @Relationship(deleteRule: .cascade, inverse: \TrackPoint.run)
     var points: [TrackPoint]

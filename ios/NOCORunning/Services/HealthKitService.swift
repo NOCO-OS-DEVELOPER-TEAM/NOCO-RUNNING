@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import CoreLocation
 
 @MainActor
 final class HealthKitService: ObservableObject {
@@ -22,20 +23,28 @@ final class HealthKitService: ObservableObject {
 
     func requestAccess() async {
         guard isAvailable else { return }
-        let read: Set<HKObjectType> = [
-            HKObjectType.quantityType(forIdentifier: .heartRate),
-            HKObjectType.quantityType(forIdentifier: .stepCount),
-            HKObjectType.quantityType(forIdentifier: .bodyMass),
-            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned),
-            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning),
-            HKObjectType.workoutType()
-        ].compactMap { $0 }
+        var read: Set<HKObjectType> = [
+            HKObjectType.workoutType(),
+            HKSeriesType.workoutRoute()
+        ]
+        for identifier in [
+            HKQuantityTypeIdentifier.heartRate,
+            .stepCount,
+            .bodyMass,
+            .activeEnergyBurned,
+            .distanceWalkingRunning
+        ] {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) {
+                read.insert(type)
+            }
+        }
 
-        let share: Set<HKSampleType> = [
-            HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning),
-            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned),
-            HKObjectType.workoutType()
-        ].compactMap { $0 }
+        var share: Set<HKSampleType> = [HKObjectType.workoutType()]
+        for identifier in [HKQuantityTypeIdentifier.distanceWalkingRunning, .activeEnergyBurned] {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) {
+                share.insert(type)
+            }
+        }
 
         do {
             try await store.requestAuthorization(toShare: share, read: read)
@@ -44,6 +53,34 @@ final class HealthKitService: ObservableObject {
         } catch {
             isAuthorized = false
         }
+    }
+
+    func runningWorkoutDrafts(limit: Int = 40) async -> [HealthWorkoutDraft] {
+        guard isAvailable else { return [] }
+        let workouts = await fetchRunningWorkouts(limit: limit)
+        let ownBundle = Bundle.main.bundleIdentifier ?? "com.noco.running"
+        var drafts: [HealthWorkoutDraft] = []
+        for workout in workouts {
+            let bundleID = workout.sourceRevision.source.bundleIdentifier
+            if bundleID == ownBundle { continue }
+            let locations = await routeLocations(for: workout)
+            drafts.append(
+                HealthWorkoutDraft(
+                    uuid: workout.uuid,
+                    startedAt: workout.startDate,
+                    endedAt: workout.endDate,
+                    duration: workout.duration,
+                    distanceMeters: workout.totalDistance?.doubleValue(for: .meter()) ?? 0,
+                    calories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()),
+                    elevationGainMeters: elevation(from: workout, locations: locations),
+                    averageHeartRate: await averageHeartRate(for: workout),
+                    sourceName: workout.sourceRevision.source.name,
+                    bundleID: bundleID,
+                    locations: locations
+                )
+            )
+        }
+        return drafts
     }
 
     func refreshSnapshot() async {
@@ -134,16 +171,100 @@ final class HealthKitService: ObservableObject {
         }
     }
 
-    private func sumToday(_ id: HKQuantityTypeIdentifier) async -> Double? {
-        guard let type = HKQuantityType.quantityType(forIdentifier: id) else { return nil }
-        let start = Calendar.current.startOfDay(for: .now)
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: .now)
-        let unit: HKUnit = id == .distanceWalkingRunning ? .meter() : .count()
-        return await withCheckedContinuation { continuation in
-            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-                continuation.resume(returning: stats?.sumQuantity()?.doubleValue(for: unit))
+    private func fetchRunningWorkouts(limit: Int) async -> [HKWorkout] {
+        await withCheckedContinuation { continuation in
+            let predicate = HKQuery.predicateForWorkouts(with: .running)
+            let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+            let query = HKSampleQuery(
+                sampleType: .workoutType(),
+                predicate: predicate,
+                limit: limit,
+                sortDescriptors: [sort]
+            ) { _, samples, _ in
+                continuation.resume(returning: (samples as? [HKWorkout]) ?? [])
             }
             store.execute(query)
         }
     }
+
+    private func routeLocations(for workout: HKWorkout) async -> [CLLocation] {
+        let routes: [HKWorkoutRoute] = await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKSeriesType.workoutRoute(),
+                predicate: HKQuery.predicateForObjects(from: workout),
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                continuation.resume(returning: (samples as? [HKWorkoutRoute]) ?? [])
+            }
+            store.execute(query)
+        }
+        var points: [CLLocation] = []
+        for route in routes {
+            points.append(contentsOf: await locations(in: route))
+        }
+        return points.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private func locations(in route: HKWorkoutRoute) async -> [CLLocation] {
+        await withCheckedContinuation { continuation in
+            let box = RouteAccumulator()
+            let query = HKWorkoutRouteQuery(route: route) { _, locations, done, error in
+                if let locations {
+                    box.locations.append(contentsOf: locations)
+                }
+                guard done || error != nil, !box.finished else { return }
+                box.finished = true
+                continuation.resume(returning: box.locations)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func averageHeartRate(for workout: HKWorkout) async -> Double? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate)
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: .discreteAverage
+            ) { _, stats, _ in
+                continuation.resume(returning: stats?.averageQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(query)
+        }
+    }
+
+    private func elevation(from workout: HKWorkout, locations: [CLLocation]) -> Double {
+        if let quantity = workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity {
+            return quantity.doubleValue(for: .meter())
+        }
+        var gain = 0.0
+        for pair in zip(locations, locations.dropFirst()) {
+            let delta = pair.1.altitude - pair.0.altitude
+            if delta > 0, delta < 8 { gain += delta }
+        }
+        return gain
+    }
+}
+
+private final class RouteAccumulator {
+    var finished = false
+    var locations: [CLLocation] = []
+}
+
+struct HealthWorkoutDraft {
+    var uuid: UUID
+    var startedAt: Date
+    var endedAt: Date
+    var duration: TimeInterval
+    var distanceMeters: Double
+    var calories: Double?
+    var elevationGainMeters: Double
+    var averageHeartRate: Double?
+    var sourceName: String
+    var bundleID: String
+    var locations: [CLLocation]
 }

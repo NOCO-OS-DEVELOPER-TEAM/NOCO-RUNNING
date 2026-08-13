@@ -60,7 +60,7 @@ struct StatsView: View {
                 }
                 .padding(20)
             }
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Statistik")
         }
     }

@@ -17,7 +17,7 @@ struct MoreView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Mehr")
         }
     }

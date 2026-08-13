@@ -23,7 +23,7 @@ struct CoachView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(NocoTheme.ink.ignoresSafeArea())
+            .background(Color.clear)
             .navigationTitle("Coach")
         }
     }
@@ -63,7 +63,7 @@ struct AssistantChatView: View {
             }
             .padding(12)
         }
-        .background(NocoTheme.ink.ignoresSafeArea())
+        .background(Color.clear)
         .navigationTitle("Assistent")
     }
 
@@ -131,7 +131,7 @@ struct QuestionsPortalView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(NocoTheme.ink)
+        .background(Color.clear)
         .navigationTitle("Fragen")
     }
 

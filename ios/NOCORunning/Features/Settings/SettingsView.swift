@@ -64,12 +64,14 @@ struct SettingsView: View {
 struct HealthSettingsView: View {
     @EnvironmentObject private var env: AppEnvironment
     @Environment(\.modelContext) private var modelContext
+    @State private var busy = false
+    @State private var message = ""
 
     var body: some View {
         List {
             Section("Status") {
                 LabeledContent("HealthKit") {
-                    Text(env.health.isAvailable ? (env.health.isAuthorized ? "Verbunden" : "Berechtigung nötig") : "Nicht verfügbar")
+                    Text(env.health.authorizationState.label)
                 }
                 if let hr = env.health.latestHeartRate {
                     LabeledContent("Puls", value: "\(Int(hr)) bpm")
@@ -77,12 +79,33 @@ struct HealthSettingsView: View {
                 if let steps = env.health.latestSteps {
                     LabeledContent("Schritte heute", value: "\(Int(steps))")
                 }
-                Button("Zugriff anfordern") {
-                    Task { await env.health.requestAccess() }
+                if env.health.lastWorkoutProbeCount > 0 {
+                    LabeledContent("Gefundene Trainings", value: "\(env.health.lastWorkoutProbeCount)")
+                }
+                if let err = env.health.lastError, !err.isEmpty {
+                    Text(err)
+                        .font(.footnote)
+                        .foregroundStyle(NocoTheme.coral)
+                }
+                if !message.isEmpty {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(NocoTheme.aqua)
+                }
+
+                Button {
+                    Task { await requestHealth() }
+                } label: {
+                    Label(busy ? "Frage Health…" : "Zugriff anfordern", systemImage: "heart.text.square")
+                }
+                .disabled(busy || !env.health.isAvailable)
+
+                Button("Health-App / Einstellungen öffnen") {
+                    env.health.openSystemHealthSettings()
                 }
             }
             Section("Apple Watch / Adidas Running") {
-                Text("Joggen nur mit der Watch oder mit adidas Running geht. Die Trainings landen in Apple Health. NOCO übernimmt Distanz, Zeit, Pace, Puls und wenn möglich die Strecke — auch alte Läufe.")
+                Text("Adidas Running und die Apple Watch müssen Trainings in Apple Health speichern. NOCO liest Distanz, Zeit, Pace, Puls (bpm) und wenn möglich die GPS-Strecke — inklusive älterer Läufe.")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
                 Text(env.healthSync.statusText)
@@ -92,16 +115,52 @@ struct HealthSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(NocoTheme.mist)
                 }
-                Button("Alle Health-/Adidas-Läufe übernehmen") {
-                    Task { await env.syncEverything(context: modelContext) }
+                Button {
+                    Task { await syncHealth() }
+                } label: {
+                    Label(
+                        env.healthSync.isSyncing ? "Synchronisiere…" : "Alle Health-/Adidas-Läufe übernehmen",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
                 }
-                .disabled(env.healthSync.isSyncing)
+                .disabled(env.healthSync.isSyncing || busy)
+            }
+            Section("Tipp") {
+                Text("Erscheint kein Health-Dialog: App einmal löschen, neue IPA installieren, dann hier „Zugriff anfordern“ tippen. Danach in der Health-App unter Teilen → Apps → NOCO RUNNING alle Lauf-/Puls-Kategorien einschalten.")
+                    .font(.footnote)
+                    .foregroundStyle(NocoTheme.mist)
+                Text("Wichtig für Sideloadly: HealthKit braucht eine Apple-Developer-ID mit Health-Capability (kostenpflichtiges Programm). Eine reine Free-Apple-ID streicht Health oft beim Signieren — dann kommt nie ein Dialog.")
+                    .font(.footnote)
+                    .foregroundStyle(NocoTheme.mist)
             }
         }
         .scrollContentBackground(.hidden)
         .background(NocoTheme.ink)
         .navigationTitle("Health")
-        .task { await env.health.refreshSnapshot() }
+        .task {
+            await env.health.refreshSnapshot()
+        }
+    }
+
+    private func requestHealth() async {
+        busy = true
+        message = ""
+        let ok = await env.health.requestAccess()
+        busy = false
+        message = ok
+            ? "Berechtigung angefragt. Wenn der Dialog kam: alle Kategorien erlauben, dann syncen."
+            : (env.health.lastError ?? "Berechtigung fehlgeschlagen.")
+        if ok {
+            await syncHealth()
+        }
+    }
+
+    private func syncHealth() async {
+        busy = true
+        _ = await env.health.requestAccess()
+        await env.syncHealthRuns(context: modelContext)
+        busy = false
+        message = env.healthSync.statusText
     }
 }
 

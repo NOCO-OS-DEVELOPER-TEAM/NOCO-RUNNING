@@ -20,6 +20,7 @@ jobs:
         working-directory: ios
         run: |
           set -euo pipefail
+          # Keep entitlements so Sideloadly can re-sign HealthKit.
           xcodebuild \
             -project NOCORunning.xcodeproj \
             -scheme NOCORunning \
@@ -29,9 +30,20 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM="" \
             build
+
+      - name: Embed HealthKit entitlements for sideload
+        run: |
+          set -euo pipefail
+          APP=$(find ios/Derived -name "NOCORunning.app" -path "*iphoneos*" | head -n 1)
+          ENT="ios/NOCORunning/NOCORunning.entitlements"
+          echo "App: $APP"
+          # Ad-hoc sign with HealthKit entitlements so Sideloadly preserves them.
+          codesign --force --sign - --entitlements "$ENT" --timestamp=none "$APP" || true
+          codesign -d --entitlements :- "$APP" || true
+          /usr/libexec/PlistBuddy -c 'Print :NSHealthShareUsageDescription' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSHealthUpdateUsageDescription' "$APP/Info.plist"
 
       - name: Package IPA
         run: |
@@ -43,9 +55,11 @@ jobs:
             exit 1
           fi
           echo "Packaging $APP"
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP" Payload/NOCORunning.app
           mkdir -p output
+          rm -f output/NOCORunning.ipa
           zip -r output/NOCORunning.ipa Payload
           ls -lh output/NOCORunning.ipa
 

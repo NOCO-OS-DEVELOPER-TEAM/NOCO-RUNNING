@@ -321,6 +321,8 @@
 				INFOPLIST_FILE = NOCORunning/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "NOCO RUNNING";
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "NOCO RUNNING liest deine Lauf-Trainings aus Apple Health (Apple Watch, adidas Running u. a.), inklusive Distanz, Zeit, Puls und Strecke.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Abgeschlossene NOCO-Läufe können optional in Apple Health gespeichert werden.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -355,6 +357,8 @@
 				INFOPLIST_FILE = NOCORunning/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "NOCO RUNNING";
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "NOCO RUNNING liest deine Lauf-Trainings aus Apple Health (Apple Watch, adidas Running u. a.), inklusive Distanz, Zeit, Puls und Strecke.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Abgeschlossene NOCO-Läufe können optional in Apple Health gespeichert werden.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;

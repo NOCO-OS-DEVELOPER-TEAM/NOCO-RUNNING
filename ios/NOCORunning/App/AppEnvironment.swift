@@ -38,7 +38,9 @@ final class AppEnvironment: ObservableObject {
         }
         analysisQueue = AnalysisQueue(ai: ai)
         Task {
-            await health.requestAccess()
+            // Health sheet needs an active UI scene — brief delay after first frame.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            _ = await health.requestAccess()
             _ = await healthSync.sync(using: health, context: context)
             await ai.testConnection()
             await coachSync.syncAll(ai: ai, context: context)

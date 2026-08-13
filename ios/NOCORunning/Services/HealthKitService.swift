@@ -1,79 +1,160 @@
 import Foundation
 import HealthKit
 import CoreLocation
+import UIKit
 
 @MainActor
 final class HealthKitService: ObservableObject {
     @Published private(set) var isAvailable: Bool = HKHealthStore.isHealthDataAvailable()
+    /// Write permission for workouts (readable). Read grants are private — we probe separately.
     @Published private(set) var isAuthorized: Bool = false
+    @Published private(set) var authorizationState: HealthAuthState = .unknown
+    @Published private(set) var lastError: String?
     @Published private(set) var latestHeartRate: Double?
     @Published private(set) var latestSteps: Double?
     @Published private(set) var latestWeightKg: Double?
     @Published private(set) var latestWorkoutDistanceMeters: Double?
+    @Published private(set) var lastWorkoutProbeCount: Int = 0
 
     private let store = HKHealthStore()
     private var hrQuery: HKQuery?
-    private var workout: HKWorkoutBuilder?
     private let workoutConfig = HKWorkoutConfiguration()
+
+    /// Known Adidas / Runtastic / Watch companion bundle fragments.
+    private let externalRunBundleHints = [
+        "adidas", "runtastic", "com.apple.health", "workout"
+    ]
 
     init() {
         workoutConfig.activityType = .running
         workoutConfig.locationType = .outdoor
+        refreshLocalAuthFlags()
     }
 
-    func requestAccess() async {
-        guard isAvailable else { return }
+    private var readTypes: Set<HKObjectType> {
         var read: Set<HKObjectType> = [
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute()
         ]
         for identifier in [
             HKQuantityTypeIdentifier.heartRate,
+            .restingHeartRate,
+            .heartRateVariabilitySDNN,
             .stepCount,
             .bodyMass,
             .activeEnergyBurned,
-            .distanceWalkingRunning
+            .basalEnergyBurned,
+            .distanceWalkingRunning,
+            .runningSpeed,
+            .vo2Max
         ] {
             if let type = HKObjectType.quantityType(forIdentifier: identifier) {
                 read.insert(type)
             }
         }
+        return read
+    }
 
+    private var shareTypes: Set<HKSampleType> {
         var share: Set<HKSampleType> = [HKObjectType.workoutType()]
-        for identifier in [HKQuantityTypeIdentifier.distanceWalkingRunning, .activeEnergyBurned] {
+        for identifier in [
+            HKQuantityTypeIdentifier.distanceWalkingRunning,
+            .activeEnergyBurned,
+            .heartRate
+        ] {
             if let type = HKObjectType.quantityType(forIdentifier: identifier) {
                 share.insert(type)
             }
         }
+        return share
+    }
 
-        do {
-            try await store.requestAuthorization(toShare: share, read: read)
-            isAuthorized = true
-            await refreshSnapshot()
-        } catch {
+    /// Call from a visible UI action (button) so the system sheet can appear.
+    @discardableResult
+    func requestAccess() async -> Bool {
+        guard isAvailable else {
+            lastError = "HealthKit ist auf diesem Gerät nicht verfügbar."
+            authorizationState = .unavailable
             isAuthorized = false
+            return false
+        }
+
+        lastError = nil
+        do {
+            // Ask the system whether a prompt is still needed (helps diagnostics).
+            let requestStatus = try await store.statusForAuthorizationRequest(toShare: shareTypes, read: readTypes)
+            if requestStatus == .shouldRequest {
+                authorizationState = .needsRequest
+            }
+
+            try await store.requestAuthorization(toShare: shareTypes, read: readTypes)
+            refreshLocalAuthFlags()
+            await refreshSnapshot()
+            let probe = await fetchRunningWorkouts(limit: 5)
+            lastWorkoutProbeCount = probe.count
+
+            // Read access is opaque; treat successful request + no throw as "connected".
+            // If write is denied, still allow reads when the user enabled them in Health.
+            if authorizationState == .denied {
+                lastError = "Schreiben in Health ist aus. Bitte in der Health-App unter Teilen → Apps → NOCO RUNNING die Kategorien aktivieren."
+                return false
+            }
+            authorizationState = .connected
+            isAuthorized = true
+            lastError = nil
+            return true
+        } catch {
+            let message = error.localizedDescription
+            // Missing entitlement / sideload without HealthKit typically lands here with no sheet.
+            if message.localizedCaseInsensitiveContains("authorization")
+                || message.localizedCaseInsensitiveContains("entitlement")
+                || (error as NSError).domain == "com.apple.healthkit" {
+                lastError = "Health-Berechtigung fehlgeschlagen (\(message)). App neu installieren (IPA mit HealthKit-Entitlement) und unter Einstellungen → Health → Datenzugriff NOCO erlauben."
+            } else {
+                lastError = message
+            }
+            authorizationState = .failed
+            isAuthorized = false
+            return false
+        }
+    }
+
+    func openSystemHealthSettings() {
+        // Health app data-access screen (best effort) → app settings fallback.
+        let candidates = [
+            URL(string: "x-apple-health://"),
+            URL(string: UIApplication.openSettingsURLString)
+        ].compactMap { $0 }
+        for url in candidates where UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+            return
         }
     }
 
     func runningWorkoutDrafts(limit: Int = 400) async -> [HealthWorkoutDraft] {
         guard isAvailable else { return [] }
-        let workouts = await fetchRunningWorkouts(limit: limit)
+        if !isAuthorized {
+            _ = await requestAccess()
+        }
+        let workouts = await fetchImportableWorkouts(limit: limit)
+        lastWorkoutProbeCount = workouts.count
         let ownBundle = Bundle.main.bundleIdentifier ?? "com.noco.running"
         var drafts: [HealthWorkoutDraft] = []
         for workout in workouts {
             let bundleID = workout.sourceRevision.source.bundleIdentifier
             if bundleID == ownBundle { continue }
             let locations = await routeLocations(for: workout)
+            let hr = await averageHeartRate(for: workout)
             drafts.append(
                 HealthWorkoutDraft(
                     uuid: workout.uuid,
                     startedAt: workout.startDate,
                     endedAt: workout.endDate,
                     duration: workout.duration,
-                    distanceMeters: workout.totalDistance?.doubleValue(for: .meter()) ?? 0,
+                    distanceMeters: distanceMeters(for: workout),
                     calories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()),
                     elevationGainMeters: elevation(from: workout, locations: locations),
-                    averageHeartRate: await averageHeartRate(for: workout),
+                    averageHeartRate: hr,
                     sourceName: workout.sourceRevision.source.name,
                     bundleID: bundleID,
                     locations: locations
@@ -84,14 +165,18 @@ final class HealthKitService: ObservableObject {
     }
 
     func refreshSnapshot() async {
+        refreshLocalAuthFlags()
         latestHeartRate = await latest(.heartRate)
         latestSteps = await sumToday(.stepCount)
-        latestWeightKg = await latest(.bodyMass).map { $0 }
+        latestWeightKg = await latest(.bodyMass)
         latestWorkoutDistanceMeters = await sumToday(.distanceWalkingRunning)
     }
 
     func beginWorkout() {
-        guard isAvailable, isAuthorized else { return }
+        guard isAvailable else { return }
+        if !isAuthorized {
+            Task { _ = await requestAccess() }
+        }
         startHeartRateQuery()
     }
 
@@ -103,7 +188,11 @@ final class HealthKitService: ObservableObject {
     }
 
     func saveCompletedRun(_ run: Run) async {
-        guard isAvailable, isAuthorized, run.status == .completed else { return }
+        guard isAvailable, run.status == .completed else { return }
+        if !isAuthorized {
+            _ = await requestAccess()
+        }
+        guard isAuthorized else { return }
         let start = run.startedAt
         let end = run.endedAt ?? start.addingTimeInterval(run.durationSeconds)
         let workout = HKWorkout(
@@ -120,32 +209,49 @@ final class HealthKitService: ObservableObject {
         do {
             try await store.save(workout)
         } catch {
-            // Health write is optional; the local run remains the source of truth.
+            lastError = "Lauf konnte nicht in Health gespeichert werden: \(error.localizedDescription)"
+        }
+    }
+
+    private func refreshLocalAuthFlags() {
+        guard isAvailable else {
+            authorizationState = .unavailable
+            isAuthorized = false
+            return
+        }
+        let writeStatus = store.authorizationStatus(for: HKObjectType.workoutType())
+        switch writeStatus {
+        case .sharingAuthorized:
+            authorizationState = .connected
+            isAuthorized = true
+        case .sharingDenied:
+            // User may still have granted read-only — keep trying reads.
+            authorizationState = .denied
+            isAuthorized = true
+        case .notDetermined:
+            authorizationState = .needsRequest
+            isAuthorized = false
+        @unknown default:
+            authorizationState = .unknown
         }
     }
 
     private func startHeartRateQuery() {
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return }
-        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-        let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sort]) { [weak self] _, samples, _ in
-            let bpm = (samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
-            Task { @MainActor in
-                self?.latestHeartRate = bpm
-            }
+        if let hrQuery {
+            store.stop(hrQuery)
         }
-        hrQuery = query
-        store.execute(query)
 
         let anchored = HKAnchoredObjectQuery(type: type, predicate: nil, anchor: nil, limit: HKObjectQueryNoLimit) { [weak self] _, samples, _, _, _ in
             let bpm = (samples?.last as? HKQuantitySample)?.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
             Task { @MainActor in
-                self?.latestHeartRate = bpm
+                if let bpm { self?.latestHeartRate = bpm }
             }
         }
         anchored.updateHandler = { [weak self] _, samples, _, _, _ in
             let bpm = (samples?.last as? HKQuantitySample)?.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
             Task { @MainActor in
-                self?.latestHeartRate = bpm
+                if let bpm { self?.latestHeartRate = bpm }
             }
         }
         store.execute(anchored)
@@ -156,8 +262,9 @@ final class HealthKitService: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: id) else { return nil }
         let unit: HKUnit = {
             switch id {
-            case .heartRate: return HKUnit.count().unitDivided(by: .minute())
+            case .heartRate, .restingHeartRate: return HKUnit.count().unitDivided(by: .minute())
             case .bodyMass: return .gramUnit(with: .kilo)
+            case .distanceWalkingRunning: return .meter()
             default: return .count()
             }
         }()
@@ -184,9 +291,41 @@ final class HealthKitService: ObservableObject {
         }
     }
 
+    private func fetchImportableWorkouts(limit: Int) async -> [HKWorkout] {
+        let running = await fetchWorkouts(activity: .running, limit: limit)
+        // Some Adidas exports land as traditional training / other — pull extras by source name.
+        let extras = await fetchWorkouts(activity: nil, limit: min(limit, 200))
+        var merged: [UUID: HKWorkout] = [:]
+        for workout in running {
+            merged[workout.uuid] = workout
+        }
+        for workout in extras {
+            let name = workout.sourceRevision.source.name.lowercased()
+            let bundle = workout.sourceRevision.source.bundleIdentifier.lowercased()
+            let looksExternalRun = externalRunBundleHints.contains { bundle.contains($0) || name.contains($0) }
+                || name.contains("adidas")
+                || bundle.contains("adidas")
+                || bundle.contains("runtastic")
+            let isRunLike = workout.workoutActivityType == .running
+                || workout.workoutActivityType == .walking
+                || (looksExternalRun && (workout.totalDistance?.doubleValue(for: .meter()) ?? 0) >= 200)
+            if isRunLike {
+                merged[workout.uuid] = workout
+            }
+        }
+        return Array(merged.values)
+            .sorted { $0.endDate > $1.endDate }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     private func fetchRunningWorkouts(limit: Int) async -> [HKWorkout] {
+        await fetchWorkouts(activity: .running, limit: limit)
+    }
+
+    private func fetchWorkouts(activity: HKWorkoutActivityType?, limit: Int) async -> [HKWorkout] {
         await withCheckedContinuation { continuation in
-            let predicate = HKQuery.predicateForWorkouts(with: .running)
+            let predicate: NSPredicate? = activity.map { HKQuery.predicateForWorkouts(with: $0) }
             let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
             let query = HKSampleQuery(
                 sampleType: .workoutType(),
@@ -198,6 +337,18 @@ final class HealthKitService: ObservableObject {
             }
             store.execute(query)
         }
+    }
+
+    private func distanceMeters(for workout: HKWorkout) -> Double {
+        if let meters = workout.totalDistance?.doubleValue(for: .meter()), meters > 0 {
+            return meters
+        }
+        if let quantity = workout.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+            .sumQuantity()?
+            .doubleValue(for: .meter()), quantity > 0 {
+            return quantity
+        }
+        return 0
     }
 
     private func routeLocations(for workout: HKWorkout) async -> [CLLocation] {
@@ -235,16 +386,43 @@ final class HealthKitService: ObservableObject {
     }
 
     private func averageHeartRate(for workout: HKWorkout) async -> Double? {
-        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
-        let predicate = HKQuery.predicateForSamples(withStart: workout.startDate, end: workout.endDate)
         let unit = HKUnit.count().unitDivided(by: .minute())
-        return await withCheckedContinuation { continuation in
+        if let meta = workout.metadata?[HKMetadataKeyAverageHeartRate] as? HKQuantity {
+            return meta.doubleValue(for: unit)
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
+        let predicate = HKQuery.predicateForSamples(
+            withStart: workout.startDate,
+            end: workout.endDate,
+            options: .strictStartDate
+        )
+
+        let statistical = await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
             let query = HKStatisticsQuery(
                 quantityType: type,
                 quantitySamplePredicate: predicate,
                 options: .discreteAverage
             ) { _, stats, _ in
                 continuation.resume(returning: stats?.averageQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(query)
+        }
+        if let statistical { return statistical }
+
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
+            let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sort]
+            ) { _, samples, _ in
+                let values = (samples as? [HKQuantitySample])?.map { $0.quantity.doubleValue(for: unit) } ?? []
+                guard !values.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: values.reduce(0, +) / Double(values.count))
             }
             store.execute(query)
         }
@@ -260,6 +438,26 @@ final class HealthKitService: ObservableObject {
             if delta > 0, delta < 8 { gain += delta }
         }
         return gain
+    }
+}
+
+enum HealthAuthState: Equatable {
+    case unknown
+    case unavailable
+    case needsRequest
+    case connected
+    case denied
+    case failed
+
+    var label: String {
+        switch self {
+        case .unknown: return "Unbekannt"
+        case .unavailable: return "Nicht verfügbar"
+        case .needsRequest: return "Berechtigung nötig"
+        case .connected: return "Verbunden"
+        case .denied: return "Eingeschränkt / prüfen"
+        case .failed: return "Fehler"
+        }
     }
 }
 

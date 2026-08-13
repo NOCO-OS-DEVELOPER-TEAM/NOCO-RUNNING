@@ -55,7 +55,7 @@ final class HealthKitService: ObservableObject {
         }
     }
 
-    func runningWorkoutDrafts(limit: Int = 40) async -> [HealthWorkoutDraft] {
+    func runningWorkoutDrafts(limit: Int = 400) async -> [HealthWorkoutDraft] {
         guard isAvailable else { return [] }
         let workouts = await fetchRunningWorkouts(limit: limit)
         let ownBundle = Bundle.main.bundleIdentifier ?? "com.noco.running"

@@ -13,6 +13,7 @@ struct StatsView: View {
     @EnvironmentObject private var env: AppEnvironment
     @Query(sort: \Run.startedAt, order: .reverse) private var runs: [Run]
     @State private var range: StatsRange = .week
+    @State private var appear = false
 
     private var completed: [Run] { StatsMath.completedRuns(runs) }
     private var start: Date {
@@ -42,9 +43,12 @@ struct StatsView: View {
 
                     let current = StatsMath.distance(completed, from: start)
                     let previous = StatsMath.distance(completed, from: previousStart, to: start)
-                    GlassSurface {
+                    GlassSurface(cornerRadius: 28, bloom: true) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Kilometer").font(NocoTheme.captionFont).foregroundStyle(NocoTheme.mist)
+                            HStack {
+                                IntelligenceSparkle()
+                                Text("Kilometer").font(NocoTheme.captionFont).foregroundStyle(NocoTheme.mist)
+                            }
                             Text(RunFormatters.distanceWithUnit(current, units: env.units))
                                 .font(NocoTheme.heroFont)
                                 .contentTransition(.numericText(value: current))
@@ -55,13 +59,20 @@ struct StatsView: View {
                     .animation(NocoMotion.soft, value: range)
 
                     distanceChart
+                    paceLineChart
+                    sourceMixChart
                     paceCard
                     countCard
                 }
                 .padding(20)
+                .opacity(appear ? 1 : 0)
+                .offset(y: appear ? 0 : 12)
             }
             .background(Color.clear)
             .navigationTitle("Statistik")
+            .onAppear {
+                withAnimation(NocoMotion.soft) { appear = true }
+            }
         }
     }
 
@@ -79,9 +90,9 @@ struct StatsView: View {
             }
         case .month:
             let days = cal.range(of: .day, in: .month, for: start)?.count ?? 30
-            return (0..<days).map { offset in
+            return stride(from: 0, to: days, by: max(1, days / 10)).map { offset in
                 let day = cal.date(byAdding: .day, value: offset, to: start) ?? start
-                let next = cal.date(byAdding: .day, value: 1, to: day) ?? day
+                let next = cal.date(byAdding: .day, value: max(1, days / 10), to: day) ?? day
                 return ("\(offset + 1)", StatsMath.distance(completed, from: day, to: next))
             }
         case .year:
@@ -99,24 +110,96 @@ struct StatsView: View {
     private var distanceChart: some View {
         GlassSurface {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Verlauf").font(.headline)
+                Text("Distanz").font(.headline)
                 Chart(buckets, id: \.label) { item in
                     BarMark(
                         x: .value("Zeit", item.label),
-                        y: .value("km", item.meters / 1000)
+                        y: .value("km", appear ? item.meters / 1000 : 0)
                     )
                     .foregroundStyle(NocoTheme.aurora)
-                    .cornerRadius(4)
+                    .cornerRadius(5)
                 }
                 .chartXAxis {
                     AxisMarks(values: .automatic) { _ in
                         AxisValueLabel().foregroundStyle(NocoTheme.mist)
                     }
                 }
-                .frame(height: 180)
+                .frame(height: 190)
                 .animation(NocoMotion.soft, value: range)
+                .animation(NocoMotion.soft, value: appear)
             }
         }
+        .rainbowGlow(radius: 10, opacity: 0.25)
+    }
+
+    private var paceLineChart: some View {
+        let points = completed
+            .filter { $0.startedAt >= start }
+            .compactMap { run -> (Date, Double)? in
+                guard let pace = run.averagePaceSecondsPerKm else { return nil }
+                return (run.startedAt, pace)
+            }
+            .suffix(16)
+        return GlassSurface {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Pace-Kurve").font(.headline)
+                if points.isEmpty {
+                    Text("Noch zu wenig Läufe für eine Kurve.")
+                        .foregroundStyle(NocoTheme.mist)
+                } else {
+                    Chart(Array(points), id: \.0) { item in
+                        LineMark(
+                            x: .value("Datum", item.0),
+                            y: .value("s/km", appear ? item.1 : item.1 * 1.08)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(NocoTheme.aqua)
+                        AreaMark(
+                            x: .value("Datum", item.0),
+                            y: .value("s/km", appear ? item.1 : item.1 * 1.08)
+                        )
+                        .foregroundStyle(NocoTheme.aqua.opacity(0.15))
+                    }
+                    .frame(height: 160)
+                    .animation(NocoMotion.soft, value: range)
+                }
+            }
+        }
+    }
+
+    private var sourceMixChart: some View {
+        let slice = completed.filter { $0.startedAt >= start }
+        let noco = slice.filter { $0.source == .tracked }.count
+        let health = slice.filter { $0.source == .appleHealth }.count
+        let imported = slice.filter { $0.source == .imported || $0.source == .manual }.count
+        let data: [(String, Int)] = [
+            ("NOCO", noco),
+            ("Health/Adidas", health),
+            ("Import", imported)
+        ].filter { $0.1 > 0 }
+
+        return GlassSurface {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Quellen").font(.headline)
+                if data.isEmpty {
+                    Text("Noch keine Läufe in diesem Zeitraum.")
+                        .foregroundStyle(NocoTheme.mist)
+                } else {
+                    Chart(data, id: \.0) { item in
+                        SectorMark(
+                            angle: .value("Läufe", appear ? item.1 : 0),
+                            innerRadius: .ratio(0.55),
+                            angularInset: 1.5
+                        )
+                        .foregroundStyle(by: .value("Quelle", item.0))
+                    }
+                    .frame(height: 180)
+                    .chartLegend(position: .bottom)
+                    .animation(NocoMotion.soft, value: appear)
+                }
+            }
+        }
+        .rainbowGlow(radius: 8, opacity: 0.2)
     }
 
     private var paceCard: some View {
@@ -139,16 +222,17 @@ struct StatsView: View {
 
     private var countCard: some View {
         let count = completed.filter { $0.startedAt >= start }.count
-        return GlassSurface {
+        return GlassSurface(bloom: true) {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Läufe").font(.headline)
-                    Text("\(count) in diesem Zeitraum")
+                    Text("\(count) in diesem Zeitraum · für den Coach synchronisiert")
                         .foregroundStyle(NocoTheme.mist)
                 }
                 Spacer()
                 Text("\(count)")
                     .font(NocoTheme.heroFont)
+                    .contentTransition(.numericText(value: Double(count)))
             }
         }
     }

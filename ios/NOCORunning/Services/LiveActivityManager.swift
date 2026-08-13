@@ -25,23 +25,23 @@ final class LiveActivityManager {
 
     func update(snapshot: LiveSnapshot) {
         guard let activity else { return }
-        guard Date.now.timeIntervalSince(lastPush) >= 1 else { return }
+        guard Date.now.timeIntervalSince(lastPush) >= 0.9 else { return }
         lastPush = .now
         let status: String = {
             switch snapshot.phase {
             case .paused: return "Pause"
-            case .running: return "Läuft"
+            case .running: return snapshot.isStationary ? "Steht" : "Läuft"
             default: return snapshot.phase.rawValue
             }
         }()
         let state = RunActivityAttributes.ContentState(
-            elapsedSeconds: Int(snapshot.elapsed),
+            elapsedSeconds: Int(snapshot.elapsed.rounded()),
             distanceMeters: snapshot.distanceMeters,
-            paceSecondsPerKm: snapshot.averagePaceSecondsPerKm,
+            paceSecondsPerKm: snapshot.currentPaceSecondsPerKm ?? snapshot.averagePaceSecondsPerKm,
             status: status
         )
         Task {
-            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8)))
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(12)))
         }
     }
 

@@ -233,14 +233,16 @@ struct AIStatusDot: View {
         switch status {
         case .connected: return NocoTheme.aqua
         case .unreachable: return NocoTheme.coral
+        case .unpaired: return NocoTheme.sun
         case .unknown: return NocoTheme.mist.opacity(0.4)
         }
     }
 
     private var label: String {
         switch status {
-        case .connected: return "KI"
-        case .unreachable: return "KI offline"
+        case .connected: return "NOCO AI"
+        case .unreachable: return "Offline"
+        case .unpaired: return "QR scannen"
         case .unknown: return "KI"
         }
     }

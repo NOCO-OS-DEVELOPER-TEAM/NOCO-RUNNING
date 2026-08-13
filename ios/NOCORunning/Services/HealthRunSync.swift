@@ -14,7 +14,7 @@ final class HealthRunSync: ObservableObject {
         isSyncing = true
         defer { isSyncing = false }
 
-        let drafts = await health.runningWorkoutDrafts()
+        let drafts = await health.runningWorkoutDrafts(limit: 400)
         let existing = (try? context.fetch(FetchDescriptor<Run>())) ?? []
         var imported: [Run] = []
 
@@ -38,8 +38,8 @@ final class HealthRunSync: ObservableObject {
                 : "Alle Watch-Läufe sind bereits in NOCO."
         } else {
             statusText = imported.count == 1
-                ? "1 Lauf von Apple Watch / Health übernommen."
-                : "\(imported.count) Läufe von Apple Watch / Health übernommen."
+                ? "1 Lauf aus Apple Health / Adidas übernommen."
+                : "\(imported.count) Läufe aus Apple Health / Adidas übernommen."
         }
         return imported
     }
@@ -67,7 +67,9 @@ final class HealthRunSync: ObservableObject {
         run.elevationGainMeters = draft.elevationGainMeters
         run.averageHeartRate = draft.averageHeartRate
         run.notes = draft.sourceName
-        run.routeName = draft.sourceName
+        run.routeName = draft.sourceName.contains("adidas") || draft.bundleID.lowercased().contains("adidas")
+            ? "adidas Running"
+            : draft.sourceName
         run.analysisPending = true
 
         let samples = downsample(draft.locations)

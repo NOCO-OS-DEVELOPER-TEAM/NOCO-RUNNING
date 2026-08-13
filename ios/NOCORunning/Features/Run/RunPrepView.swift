@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct RunPrepView: View {
+    var fullscreen: Bool = false
     @EnvironmentObject private var env: AppEnvironment
     @Query(sort: \SavedRoute.lastUsedAt, order: .reverse) private var routes: [SavedRoute]
     @Query(sort: \Run.startedAt, order: .reverse) private var runs: [Run]
@@ -11,12 +12,32 @@ struct RunPrepView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
+                if fullscreen {
+                    HStack {
+                        Button("Abbrechen") {
+                            env.cancelRunFlow()
+                        }
+                        Spacer()
+                        IntelligenceSparkle()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                }
+
                 Spacer()
-                VStack(spacing: 14) {
-                    PrepRow(title: "GPS", ready: env.tracker.snapshot.gpsReady, detail: accuracyText)
-                    PrepRow(title: "Health", ready: env.health.isAuthorized || !env.health.isAvailable, detail: env.health.isAvailable ? (env.health.isAuthorized ? "Verbunden" : "Optional") : "Nicht verfügbar")
-                    PrepRow(title: "Musik", ready: true, detail: env.music.title)
-                    PrepRow(title: "KI-Coach", ready: env.ai.reachability != .unreachable, detail: env.ai.reachability == .connected ? "Verbunden" : "Offline-Coach aktiv")
+                GlassSurface(cornerRadius: 28, bloom: true) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Vorbereitung")
+                            .font(.headline)
+                        PrepRow(title: "GPS", ready: env.tracker.snapshot.gpsReady, detail: accuracyText)
+                        PrepRow(title: "Health", ready: env.health.isAuthorized || !env.health.isAvailable, detail: env.health.isAvailable ? (env.health.isAuthorized ? "Verbunden" : "Optional") : "Nicht verfügbar")
+                        PrepRow(title: "Musik", ready: true, detail: env.music.title)
+                        PrepRow(
+                            title: "NOCO AI",
+                            ready: env.ai.reachability == .connected || env.ai.reachability == .unpaired || env.ai.reachability == .unknown,
+                            detail: coachDetail
+                        )
+                    }
                 }
                 .padding(.horizontal, 20)
 
@@ -30,6 +51,7 @@ struct RunPrepView: View {
                         .foregroundStyle(NocoTheme.mist)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
+                        .intelligenceShimmer()
                 }
 
                 AuroraButton(
@@ -42,15 +64,19 @@ struct RunPrepView: View {
                 .padding(.bottom, 28)
             }
             .background(Color.clear)
+            .navigationBarHidden(fullscreen)
             .navigationTitle("Lauf")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu("Strecke") {
-                        Button("Freies Laufen") { selectedRoute = nil }
-                        ForEach(routes.prefix(8), id: \.id) { route in
-                            Button(route.name) { selectedRoute = route }
-                        }
+                if !fullscreen {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        routeMenu
                     }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                if fullscreen {
+                    routeMenu
+                        .padding(.horizontal, 20)
                 }
             }
             .onAppear {
@@ -68,6 +94,24 @@ struct RunPrepView: View {
         }
     }
 
+    private var routeMenu: some View {
+        Menu("Strecke") {
+            Button("Freies Laufen") { selectedRoute = nil }
+            ForEach(routes.prefix(8), id: \.id) { route in
+                Button(route.name) { selectedRoute = route }
+            }
+        }
+    }
+
+    private var coachDetail: String {
+        switch env.ai.reachability {
+        case .connected: return "PC verbunden"
+        case .unpaired: return "QR koppeln"
+        case .unreachable: return "Offline-Coach"
+        case .unknown: return "Prüfe…"
+        }
+    }
+
     private var accuracyText: String {
         if let accuracy = env.tracker.snapshot.gpsAccuracy, accuracy > 0 {
             return String(format: "±%.0f m", accuracy)
@@ -82,17 +126,16 @@ private struct PrepRow: View {
     var detail: String
 
     var body: some View {
-        GlassSurface(cornerRadius: 18) {
-            HStack {
-                Circle()
-                    .fill(ready ? NocoTheme.aqua : NocoTheme.sun)
-                    .frame(width: 9, height: 9)
-                Text(title).font(.headline)
-                Spacer()
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(NocoTheme.mist)
-            }
+        HStack {
+            Circle()
+                .fill(ready ? NocoTheme.aqua : NocoTheme.sun)
+                .frame(width: 9, height: 9)
+                .rainbowGlow(radius: 4, opacity: ready ? 0.5 : 0.2)
+            Text(title).font(.headline)
+            Spacer()
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(NocoTheme.mist)
         }
     }
 }

@@ -37,6 +37,10 @@ public enum OfflineCoach: Sendable {
             }
         }
 
+        if run.source.lowercased().contains("health") || run.source.lowercased().contains("import") {
+            lines.append("Dieser Lauf kam über Apple Health (z. B. Watch oder adidas Running) und zählt genauso wie ein NOCO-Lauf.")
+        }
+
         if lines.isEmpty {
             lines.append("Sauberer Lauf über \(String(format: "%.2f", distanceKm)) km in \(RunFormatters.duration(run.duration)).")
         }

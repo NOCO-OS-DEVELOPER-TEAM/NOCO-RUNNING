@@ -20,9 +20,10 @@ struct LiveRunView: View {
         ZStack(alignment: .top) {
             map.ignoresSafeArea()
             VStack {
-                topHUD
+        topHUD
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
+                    .rainbowGlow(radius: 12, opacity: 0.3)
                 Spacer()
                 bottomHUD
                     .padding(.horizontal, 16)
@@ -37,6 +38,7 @@ struct LiveRunView: View {
             }
             Button("Verwerfen", role: .destructive) {
                 env.tracker.discardActive()
+                env.wantsFullscreenRun = false
             }
             Button("Weiterlaufen", role: .cancel) {}
         }
@@ -58,11 +60,14 @@ struct LiveRunView: View {
             }
         }
         .mapStyle(.standard(elevation: .realistic))
-        .mapControls { MapUserLocationButton() }
+        .mapControls {
+            MapUserLocationButton()
+            MapCompass()
+        }
     }
 
     private var topHUD: some View {
-        GlassSurface(cornerRadius: 26, intensity: 0.9) {
+        GlassSurface(cornerRadius: 26, intensity: 0.9, bloom: true) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PACE")

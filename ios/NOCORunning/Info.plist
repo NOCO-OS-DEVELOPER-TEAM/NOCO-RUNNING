@@ -16,8 +16,22 @@
 	<string>Bewegungsdaten helfen, Schritte und Aktivität während eines Laufs einzuordnen.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Während des Laufs kannst du die aktuelle Wiedergabe steuern.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NOCO RUNNING scannt den QR-Code aus dem NOCO-AI-Plugin auf deinem Windows-PC, um die lokale KI zu koppeln.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>NOCO RUNNING spricht deinen eigenen KI-Server im lokalen Netz an. Ohne Verbindung läuft das Tracking trotzdem.</string>
+	<string>NOCO RUNNING spricht dein NOCO-AI auf dem Windows-PC im lokalen Netz an. Ohne Verbindung läuft das Tracking trotzdem.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.noco.running.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>nocoai</string>
+				<string>nocorunning</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

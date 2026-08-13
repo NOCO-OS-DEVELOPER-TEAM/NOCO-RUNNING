@@ -8,18 +8,29 @@ struct RootView: View {
     @State private var summaryRun: Run?
     @State private var selectedTab: AppTab = .home
 
+    private var hideTabs: Bool {
+        env.wantsFullscreenRun
+            || env.tracker.snapshot.phase != .idle
+            || summaryRun != nil
+    }
+
     var body: some View {
         ZStack {
-            AmbientField(intensity: env.tracker.snapshot.phase == .running || env.tracker.snapshot.phase == .paused ? 0.35 : 1)
-            switch env.tracker.snapshot.phase {
-            case .preparing:
-                RunPrepView()
-            case .running, .paused, .finishing:
-                LiveRunView(onFinished: { run in
-                    summaryRun = run
-                })
-            default:
-                if let summaryRun {
+            AmbientField(
+                intensity: env.tracker.snapshot.phase == .running || env.tracker.snapshot.phase == .paused ? 0.28 : 1,
+                animated: env.tracker.snapshot.phase == .idle
+            )
+            Group {
+                if env.tracker.snapshot.phase == .running
+                    || env.tracker.snapshot.phase == .paused
+                    || env.tracker.snapshot.phase == .finishing {
+                    LiveRunView(onFinished: { run in
+                        summaryRun = run
+                        env.wantsFullscreenRun = false
+                    })
+                } else if env.wantsFullscreenRun || env.tracker.snapshot.phase == .preparing {
+                    RunPrepView(fullscreen: true)
+                } else if let summaryRun {
                     RunSummaryView(run: summaryRun) {
                         self.summaryRun = nil
                     }
@@ -30,17 +41,23 @@ struct RootView: View {
         }
         .tint(NocoTheme.aqua)
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, env.tracker.snapshot.phase == .idle else { return }
-            Task { await env.syncHealthRuns(context: modelContext) }
+            guard phase == .active else { return }
+            Task { await env.syncEverything(context: modelContext) }
+        }
+        .onChange(of: selectedTab) { _, tab in
+            if tab == .run {
+                env.beginRunFlow()
+                selectedTab = .home
+            }
         }
     }
 
     private var tabShell: some View {
         TabView(selection: $selectedTab) {
-            DashboardView(onStart: { env.tracker.prepareGPS() })
+            DashboardView(onStart: { env.beginRunFlow() })
                 .tabItem { Label("Start", systemImage: "sparkles") }
                 .tag(AppTab.home)
-            RunPrepView()
+            Color.clear
                 .tabItem { Label("Laufen", systemImage: "figure.run") }
                 .tag(AppTab.run)
             StatsView()
@@ -53,6 +70,7 @@ struct RootView: View {
                 .tabItem { Label("Mehr", systemImage: "ellipsis.circle") }
                 .tag(AppTab.more)
         }
+        .toolbar(hideTabs ? .hidden : .visible, for: .tabBar)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
     }
 }

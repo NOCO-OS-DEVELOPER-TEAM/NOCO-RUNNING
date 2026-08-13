@@ -14,15 +14,16 @@ Priorität: **Stabiles Tracking vor allem anderen.** Die KI darf einen Lauf niem
 - HealthKit optional, ohne Apple Watch
 - Musiksteuerung über die Systemwiedergabe
 - Dashboard, Statistik, Ziele, Rekorde, Gewicht, Strecken, Import
-- Coach: lokal heuristisch, optional über deinen PC (FastAPI + Ollama)
-- Liquid-Glass-Optik mit Aurora-Glow, ohne den Tracking-Thread zu belasten
+- Coach: QR-Kopplung mit dem **NOCO RUNNING**-Plugin in NOCO AI (Port 4747), Offline-Fallback
+- Health/Adidas-Import der Lauf-Historie
+- Liquid Glass, Rainbow Glow, Intelligence-Animationen
 
 ## Ordner
 
 | Pfad | Inhalt |
 |---|---|
 | `ios/` | Xcode-Projekt, App, Live Activity, Shared-Code, Tests |
-| `server/` | Lokaler Coach-API-Server für Windows |
+| `server/` | Optionaler Legacy-FastAPI-Coach |
 | `output/` | Zielordner für IPA / Archive |
 | `scripts/` | Build- und Start-Skripte |
 
@@ -33,17 +34,18 @@ Auf einem Mac:
 1. `ios/NOCORunning.xcodeproj` in Xcode öffnen
 2. Team unter Signing wählen (`com.noco.running`)
 3. iPhone oder Simulator, Scheme **NOCORunning**
-4. Erster Lauf: Standort und optional Health erlauben
+4. Erster Lauf: Standort, Kamera (QR) und optional Health erlauben
 
-Dieses Windows-Workspace kann Swift **nicht** kompilieren. Der CI-Job auf `macos-15` prüft den Simulator-Build.
+Dieses Windows-Workspace kann Swift **nicht** kompilieren. IPA kommt über GitHub Actions.
 
-## KI-Server
+## NOCO AI koppeln (wichtig)
 
-```powershell
-.\scripts\Start-Coach.ps1
-```
+1. NOCO AI X auf dem Windows-PC starten (Companion `:4747`, Plugin **NOCO RUNNING** aktiv).
+2. QR-Code im Companion anzeigen.
+3. In der iPhone-App: **Coach → NOCO AI koppeln → QR-Code scannen**.
+4. Fertig — Läufe, Analysen und Fragen gehen an den PC. Ohne Verbindung antwortet der Offline-Coach.
 
-In der App: **Mehr → Einstellungen → Lokale Verbindung** → IPv4 des PCs, Port `8787`.
+Firewall: TCP **4747** im privaten Netz erlauben.
 
 ## IPA auf Windows (ohne Mac)
 

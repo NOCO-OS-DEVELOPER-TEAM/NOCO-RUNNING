@@ -3,6 +3,7 @@ import SwiftData
 
 struct CoachView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         NavigationStack {
@@ -10,6 +11,7 @@ struct CoachView: View {
                 Section {
                     NavigationLink("Assistent") { AssistantChatView() }
                     NavigationLink("Fragenportal") { QuestionsPortalView() }
+                    NavigationLink("NOCO AI koppeln") { AIConnectionView() }
                 }
                 Section("Verbindung") {
                     HStack {
@@ -17,9 +19,12 @@ struct CoachView: View {
                         Spacer()
                         AIStatusDot(status: env.ai.reachability)
                     }
-                    Text("Tracking läuft immer lokal. Der Coach holt Analysen nach, sobald dein PC erreichbar ist.")
+                    Text(env.coachSync.statusText)
                         .font(.footnote)
                         .foregroundStyle(NocoTheme.mist)
+                    Button("Jetzt synchronisieren") {
+                        Task { await env.syncEverything(context: modelContext) }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -47,24 +52,51 @@ struct AssistantChatView: View {
                             if message.isUser { Spacer(minLength: 40) }
                             Text(message.text)
                                 .padding(12)
-                                .background(message.isUser ? NocoTheme.violet.opacity(0.35) : Color.white.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .fill(message.isUser ? NocoTheme.violet.opacity(0.35) : Color.white.opacity(0.08))
+                                )
+                                .overlay {
+                                    if !message.isUser {
+                                        RainbowBloom(lineWidth: 1, cornerRadius: 16, spinning: false)
+                                    }
+                                }
                             if !message.isUser { Spacer(minLength: 40) }
                         }
                     }
                 }
                 .padding(16)
             }
-            HStack {
-                TextField("Frag deinen Coach…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                Button("Senden") { Task { await send() } }
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+            VStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(quickPrompts, id: \.self) { prompt in
+                            Button(prompt) { draft = prompt }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                HStack {
+                    TextField("Frag deinen Coach…", text: $draft, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Senden") { Task { await send() } }
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+                }
+                .padding(12)
             }
-            .padding(12)
+            .background(.ultraThinMaterial)
         }
         .background(Color.clear)
         .navigationTitle("Assistent")
+    }
+
+    private var quickPrompts: [String] {
+        Array(PersonalizedQuestions.make(
+            from: runs,
+            weekMeters: StatsMath.distance(runs, from: StatsMath.weekStart())
+        ).prefix(4))
     }
 
     private func send() async {
@@ -80,9 +112,10 @@ struct AssistantChatView: View {
             runs: StatsMath.completedRuns(runs),
             goals: goals
         )
-        let reply = await env.ai.chat(question: text, context: context)
+        let reply = await env.ai.chat(question: text, context: context, runID: runs.first?.id)
         let body = [reply.insight, reply.recommendation].compactMap { $0 }.joined(separator: "\n")
-        modelContext.insert(ChatMessage(isUser: false, text: body))
+        let suffix = reply.source.contains("offline") ? "\n\n(Offline-Coach)" : "\n\n(NOCO AI)"
+        modelContext.insert(ChatMessage(isUser: false, text: body + suffix))
         try? modelContext.save()
         busy = false
     }
@@ -96,19 +129,16 @@ struct QuestionsPortalView: View {
     @State private var answer: CoachReply?
     @State private var busy = false
 
-    private let questions = [
-        "Wie kann ich schneller werden?",
-        "Warum war meine Pace heute schlechter?",
-        "Wie oft sollte ich laufen?",
-        "Wie lange sollte ein lockerer Lauf sein?",
-        "Wie verbessere ich meine Ausdauer?",
-        "Was war mein bester Lauf?",
-        "Wie hat sich meine Leistung entwickelt?"
-    ]
+    private var questions: [String] {
+        PersonalizedQuestions.make(
+            from: runs,
+            weekMeters: StatsMath.distance(runs, from: StatsMath.weekStart())
+        )
+    }
 
     var body: some View {
         List {
-            Section {
+            Section("Aus deinen Läufen") {
                 ForEach(questions, id: \.self) { question in
                     Button(question) {
                         Task { await ask(question) }
@@ -116,7 +146,7 @@ struct QuestionsPortalView: View {
                 }
             }
             if busy {
-                ProgressView("Coach denkt nach…")
+                ProgressView(env.ai.reachability == .connected ? "NOCO AI denkt nach…" : "Offline-Coach…")
             }
             if let answer {
                 Section(answer.title) {
@@ -124,7 +154,7 @@ struct QuestionsPortalView: View {
                     if let rec = answer.recommendation {
                         Text(rec).foregroundStyle(NocoTheme.mist)
                     }
-                    Text(answer.source == "offline" ? "Lokaler Coach" : "PC-KI")
+                    Text(answer.source.contains("offline") ? "Lokaler Coach" : "NOCO AI auf dem PC")
                         .font(.caption)
                         .foregroundStyle(NocoTheme.mist)
                 }
@@ -143,7 +173,7 @@ struct QuestionsPortalView: View {
             runs: StatsMath.completedRuns(runs),
             goals: goals
         )
-        answer = await env.ai.chat(question: question, context: context)
+        answer = await env.ai.chat(question: question, context: context, runID: runs.first?.id)
         busy = false
     }
 }

@@ -19,7 +19,7 @@ enum RunSource: String, Codable {
         case .tracked: return "iPhone"
         case .imported: return "Import"
         case .manual: return "Manuell"
-        case .appleHealth: return "Apple Watch"
+        case .appleHealth: return "Health / Adidas"
         }
     }
 }

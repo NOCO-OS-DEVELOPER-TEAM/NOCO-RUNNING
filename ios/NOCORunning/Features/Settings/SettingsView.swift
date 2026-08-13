@@ -35,7 +35,7 @@ struct SettingsView: View {
                 NavigationLink("HealthKit") { HealthSettingsView() }
             }
             Section("KI") {
-                NavigationLink("Lokale Verbindung") { AIConnectionView() }
+                NavigationLink("NOCO AI / QR") { AIConnectionView() }
             }
             Section("Daten") {
                 NavigationLink("Import / Export / Reset") { DataSettingsView() }
@@ -81,8 +81,8 @@ struct HealthSettingsView: View {
                     Task { await env.health.requestAccess() }
                 }
             }
-            Section("Apple Watch ohne iPhone") {
-                Text("Joggen nur mit der Watch geht. Starte in der Apple-Trainings-App „Laufen im Freien“. Das iPhone kann zu Hause bleiben. Sobald Watch und iPhone sich wieder sehen, liegt der Lauf in Apple Health und NOCO übernimmt Distanz, Zeit, Pace, Puls und wenn möglich die Strecke.")
+            Section("Apple Watch / Adidas Running") {
+                Text("Joggen nur mit der Watch oder mit adidas Running geht. Die Trainings landen in Apple Health. NOCO übernimmt Distanz, Zeit, Pace, Puls und wenn möglich die Strecke — auch alte Läufe.")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
                 Text(env.healthSync.statusText)
@@ -92,8 +92,8 @@ struct HealthSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(NocoTheme.mist)
                 }
-                Button("Watch-Läufe jetzt übernehmen") {
-                    Task { await env.syncHealthRuns(context: modelContext) }
+                Button("Alle Health-/Adidas-Läufe übernehmen") {
+                    Task { await env.syncEverything(context: modelContext) }
                 }
                 .disabled(env.healthSync.isSyncing)
             }
@@ -107,60 +107,124 @@ struct HealthSettingsView: View {
 
 struct AIConnectionView: View {
     @EnvironmentObject private var env: AppEnvironment
-    @State private var host = ""
-    @State private var port = 8787
-    @State private var token = ""
-    @State private var tls = false
+    @Environment(\.modelContext) private var modelContext
+    @State private var showScanner = false
+    @State private var manualHost = ""
+    @State private var manualPin = ""
+    @State private var port = 4747
+    @State private var pairing = false
+    @State private var message = ""
 
     var body: some View {
         Form {
-            Section("Server") {
-                TextField("IP oder Hostname", text: $host)
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        IntelligenceSparkle()
+                        Text("NOCO AI Plugin")
+                            .font(.headline)
+                    }
+                    Text("Scanne den QR-Code aus dem NOCO-RUNNING-Plugin auf dem Windows-PC. Danach synchronisieren Läufe, Analysen und Fragen automatisch.")
+                        .font(.footnote)
+                        .foregroundStyle(NocoTheme.mist)
+                    AIStatusDot(status: env.ai.reachability)
+                    if env.ai.configuration.isPaired {
+                        Text("\(env.ai.configuration.host):\(env.ai.configuration.port)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(NocoTheme.mist)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("Koppeln") {
+                Button {
+                    showScanner = true
+                } label: {
+                    Label("QR-Code scannen", systemImage: "qrcode.viewfinder")
+                }
+                .disabled(pairing)
+
+                Button("Jetzt synchronisieren") {
+                    Task { await env.syncEverything(context: modelContext) }
+                }
+                .disabled(!env.ai.configuration.isPaired)
+
+                if env.ai.configuration.isPaired {
+                    Button("Entkoppeln", role: .destructive) {
+                        env.ai.unpair()
+                        message = "Entkoppelt."
+                    }
+                }
+            }
+
+            Section("Fallback ohne QR") {
+                TextField("PC-IP", text: $manualHost)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
+                TextField("PIN", text: $manualPin)
+                    .keyboardType(.numberPad)
                 Stepper("Port \(port)", value: $port, in: 1...65535)
-                Toggle("HTTPS", isOn: $tls)
-                SecureField("API-Token (optional)", text: $token)
+                Button("Mit PIN koppeln") {
+                    Task { await pairManual() }
+                }
+                .disabled(manualHost.isEmpty || manualPin.isEmpty || pairing)
             }
+
             Section("Status") {
-                AIStatusDot(status: env.ai.reachability)
+                Text(env.coachSync.statusText)
                 if let checked = env.ai.lastCheckedAt {
                     Text("Zuletzt geprüft: \(checked.formatted(date: .omitted, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(NocoTheme.mist)
                 }
-                Button("Verbindung testen") {
-                    persist()
-                    Task { await env.ai.testConnection() }
+                if let err = env.ai.lastError, !err.isEmpty {
+                    Text(err).foregroundStyle(NocoTheme.coral)
                 }
-            }
-            Section {
-                Text("Der PC muss im selben Netz sein. Windows-Firewall: Port \(port) für private Netze zulassen.")
+                if !message.isEmpty {
+                    Text(message).foregroundStyle(NocoTheme.aqua)
+                }
+                Text("Firewall: TCP 4747 im privaten Netz erlauben. Tracking funktioniert immer auch offline.")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
             }
         }
         .scrollContentBackground(.hidden)
         .background(NocoTheme.ink)
-        .navigationTitle("KI-Verbindung")
-        .onAppear {
-            let config = env.ai.configuration
-            host = config.host
-            port = config.port
-            token = config.token
-            tls = config.useTLS
+        .navigationTitle("NOCO AI")
+        .sheet(isPresented: $showScanner) {
+            QRPairingScannerView { code in
+                Task { await pair(code: code) }
+            }
         }
-        .onDisappear { persist() }
+        .onAppear {
+            manualHost = env.ai.configuration.host
+            port = env.ai.configuration.port == 0 ? 4747 : env.ai.configuration.port
+        }
     }
 
-    private func persist() {
-        var config = env.ai.configuration
-        config.host = host
-        config.port = port
-        config.token = token
-        config.useTLS = tls
-        config.persist()
-        env.ai.configuration = config
+    private func pair(code: String) async {
+        guard let payload = PairingPayload.parse(code) else {
+            message = "QR nicht erkannt. Bitte den Code aus NOCO AI scannen."
+            return
+        }
+        pairing = true
+        let ok = await env.ai.pair(with: payload)
+        pairing = false
+        message = ok ? "Gekoppelt. Sync startet…" : (env.ai.lastError ?? "Pairing fehlgeschlagen")
+        if ok {
+            await env.syncEverything(context: modelContext)
+            Haptics.record()
+        }
+    }
+
+    private func pairManual() async {
+        let payload = PairingPayload(host: manualHost, port: port, pin: manualPin, lanHost: manualHost, remoteHost: nil)
+        pairing = true
+        let ok = await env.ai.pair(with: payload)
+        pairing = false
+        message = ok ? "Gekoppelt." : (env.ai.lastError ?? "Pairing fehlgeschlagen")
+        if ok { await env.syncEverything(context: modelContext) }
     }
 }
 

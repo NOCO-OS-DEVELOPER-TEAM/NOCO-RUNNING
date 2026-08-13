@@ -1,0 +1,58 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build unsigned device app
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project NOCORunning.xcodeproj \
+            -scheme NOCORunning \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath Derived \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP=$(find ios/Derived -name "NOCORunning.app" -path "*iphoneos*" | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "NOCORunning.app not found"
+            find ios/Derived -name "*.app" | head
+            exit 1
+          fi
+          echo "Packaging $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/NOCORunning.app
+          mkdir -p output
+          zip -r output/NOCORunning.ipa Payload
+          ls -lh output/NOCORunning.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOCORunning-ipa
+          path: output/NOCORunning.ipa
+          if-no-files-found: error
+          retention-days: 14

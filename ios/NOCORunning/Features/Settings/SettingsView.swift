@@ -133,6 +133,10 @@ struct AIConnectionView: View {
                             .font(.caption.monospaced())
                             .foregroundStyle(NocoTheme.mist)
                     }
+                    Button("Verbindung prüfen") {
+                        Task { await env.ai.testConnection() }
+                    }
+                    .buttonStyle(.bordered)
                 }
                 .padding(.vertical, 4)
             }
@@ -173,6 +177,11 @@ struct AIConnectionView: View {
 
             Section("Status") {
                 Text(env.coachSync.statusText)
+                if let synced = env.coachSync.lastSyncAt {
+                    Text("Zuletzt synchronisiert: \(synced.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(NocoTheme.mist)
+                }
                 if let checked = env.ai.lastCheckedAt {
                     Text("Zuletzt geprüft: \(checked.formatted(date: .omitted, time: .shortened))")
                         .font(.caption)
@@ -184,7 +193,7 @@ struct AIConnectionView: View {
                 if !message.isEmpty {
                     Text(message).foregroundStyle(NocoTheme.aqua)
                 }
-                Text("Firewall: TCP 4747 im privaten Netz erlauben. Tracking funktioniert immer auch offline.")
+                Text("Firewall: TCP 4747 im privaten Netz erlauben. Tracking funktioniert immer auch offline. Die separate NOCO-AI-iPhone-App speichert eine eigene Kopplung — bitte dort ggf. ebenfalls scannen.")
                     .font(.footnote)
                     .foregroundStyle(NocoTheme.mist)
             }

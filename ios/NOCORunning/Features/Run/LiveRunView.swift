@@ -50,19 +50,21 @@ struct LiveRunView: View {
                 MapPolyline(coordinates: env.tracker.path)
                     .stroke(NocoTheme.aqua.opacity(0.9), lineWidth: 5)
             }
-            if let lat = snap.latitude, let lon = snap.longitude {
-                Annotation("Position", coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
-                    Circle()
-                        .fill(NocoTheme.aqua)
-                        .frame(width: 14, height: 14)
-                        .rainbowGlow(radius: 6, opacity: 0.8)
-                }
-            }
+            UserAnnotation()
         }
         .mapStyle(.standard(elevation: .realistic))
         .mapControls {
             MapUserLocationButton()
             MapCompass()
+            MapScaleView()
+        }
+        .onAppear {
+            camera = .userLocation(followsHeading: true, fallback: .automatic)
+        }
+        .onChange(of: snap.phase) { _, phase in
+            if phase == .running || phase == .paused {
+                camera = .userLocation(followsHeading: true, fallback: .automatic)
+            }
         }
     }
 

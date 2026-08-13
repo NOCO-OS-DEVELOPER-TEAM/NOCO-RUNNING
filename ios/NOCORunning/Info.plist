@@ -20,6 +20,11 @@
 	<string>NOCO RUNNING scannt den QR-Code aus dem NOCO-AI-Plugin auf deinem Windows-PC, um die lokale KI zu koppeln.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>NOCO RUNNING spricht dein NOCO-AI auf dem Windows-PC im lokalen Netz an. Ohne Verbindung läuft das Tracking trotzdem.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_nocoai._tcp</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

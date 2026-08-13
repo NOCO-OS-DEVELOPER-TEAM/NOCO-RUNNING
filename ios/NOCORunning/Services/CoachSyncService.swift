@@ -46,7 +46,8 @@ final class CoachSyncService: ObservableObject {
             lastUpdated = result.updated ?? 0
             lastPushCursor = .now
             lastSyncAt = .now
-            statusText = "Sync ok: \(lastImported) neu, \(lastUpdated) aktualisiert auf dem PC."
+            let stamp = lastSyncAt!.formatted(date: .abbreviated, time: .shortened)
+            statusText = "Sync ok (\(stamp)): \(lastImported) neu, \(lastUpdated) aktualisiert."
             for run in pending where run.analysisPending {
                 let athlete = StatsMath.athleteContext(
                     name: "",

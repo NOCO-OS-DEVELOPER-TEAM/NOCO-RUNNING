@@ -95,6 +95,17 @@ struct DashboardView: View {
             lastRunCard(last)
         }
         weekCard
+        if !completed.filter({ $0.startedAt >= StatsMath.weekStart() }).isEmpty {
+            GlassSurface {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Wochenüberblick").font(.headline)
+                    Text(InsightEngine.weeklyOverview(from: completed))
+                        .font(.subheadline)
+                        .foregroundStyle(NocoTheme.mist)
+                        .lineLimit(6)
+                }
+            }
+        }
         if let insight = completed.first(where: { $0.analysisBody != nil }) {
             insightCard(insight)
         }

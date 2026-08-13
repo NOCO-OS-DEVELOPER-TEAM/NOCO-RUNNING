@@ -68,16 +68,36 @@ final class AppEnvironment: ObservableObject {
         wantsFullscreenRun = false
         weather.attach(to: run)
         newRecords = RecordDetector.evaluate(run: run, context: context)
+        let completed = StatsMath.completedRuns((try? context.fetch(FetchDescriptor<Run>())) ?? [])
+        run.analysisTitle = "Lauf-Kurzfazit"
+        run.analysisBody = InsightEngine.oneSentence(
+            for: run,
+            typicalPace: StatsMath.typicalPace(from: completed),
+            typicalDistance: StatsMath.typicalDistance(from: completed)
+        )
+        if let probe = InsightEngine.selfProbes(from: completed + [run]).first {
+            run.analysisBody = (run.analysisBody ?? "") + "\n\nSelbstfrage: \(probe.question)\n\(probe.hypothesis)"
+        }
+        run.analysisPending = true
+        try? context.save()
         Task { await health.saveCompletedRun(run) }
         Task {
+            // Sync to PC first so /running/ask|/analyze sees the run, then enrich.
+            await coachSync.syncAll(ai: ai, context: context, force: false)
             let weight = currentWeight(context: context)
             let profile = currentProfile(context: context)
             let runs = (try? context.fetch(FetchDescriptor<Run>())) ?? []
             let goals = (try? context.fetch(FetchDescriptor<Goal>())) ?? []
             let athlete = StatsMath.athleteContext(name: profile?.name ?? "", weightKg: weight, runs: runs, goals: goals)
             let reply = await ai.analyze(run: run.toDTO(), context: athlete)
+            let local = run.analysisBody ?? ""
             run.analysisTitle = reply.title
             run.analysisBody = [reply.insight, reply.recommendation].compactMap { $0 }.joined(separator: "\n")
+            if reply.source.contains("offline"), !local.isEmpty {
+                run.analysisBody = local
+            } else if !local.isEmpty {
+                run.analysisBody = (run.analysisBody ?? "") + "\n\n" + local
+            }
             run.analysisPending = false
             try? context.save()
             await coachSync.syncAll(ai: ai, context: context, force: false)
